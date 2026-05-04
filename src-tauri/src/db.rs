@@ -1,7 +1,7 @@
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, Result, params};
 use std::sync::Mutex;
 
-const CURRENT_DB_VERSION: i64 = 4;
+const CURRENT_DB_VERSION: i64 = 5;
 
 pub struct Database {
     pub conn: Mutex<Connection>,
@@ -138,6 +138,39 @@ impl Database {
                 );
                 CREATE INDEX IF NOT EXISTS idx_skill_nodes_tree ON skill_nodes(tree_id);"
             )?;
+        }
+
+        if version < 5 {
+            // Verificar si la columna color ya existe (por si se re-ejecuta)
+            let has_color: bool = conn
+                .prepare("PRAGMA table_info(skill_trees)")?
+                .query_map([], |row| row.get::<_, String>(1))?
+                .filter_map(|r| r.ok())
+                .any(|name| name == "color");
+
+            if !has_color {
+                conn.execute_batch(
+                    "ALTER TABLE skill_trees ADD COLUMN color TEXT NOT NULL DEFAULT '#a855f7';"
+                )?;
+            }
+
+            // Asignar colores distintos a árboles existentes según su ID
+            let palette = vec![
+                "#a855f7", "#22c55e", "#ef4444", "#3b82f6",
+                "#f97316", "#06b6d4", "#ec4899", "#eab308",
+            ];
+            let mut stmt = conn.prepare("SELECT id FROM skill_trees")?;
+            let ids: Vec<i64> = stmt
+                .query_map([], |row| row.get::<_, i64>(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            for (i, id) in ids.iter().enumerate() {
+                let color = palette[i % palette.len()];
+                conn.execute(
+                    "UPDATE skill_trees SET color = ?1 WHERE id = ?2 AND color = '#a855f7'",
+                    params![color, id],
+                ).ok();
+            }
         }
 
         Self::set_db_version(&conn, CURRENT_DB_VERSION)?;

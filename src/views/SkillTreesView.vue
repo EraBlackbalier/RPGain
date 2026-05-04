@@ -5,23 +5,6 @@ import SkillTreeCanvas from "../components/SkillTreeCanvas.vue";
 
 const skillStore = useSkillStore();
 
-const TREE_COLORS = [
-  "#22c55e",
-  "#eab308",
-  "#ef4444",
-  "#3b82f6",
-  "#f97316",
-  "#a855f7",
-  "#06b6d4",
-  "#ec4899",
-  "#14b8a6",
-  "#84cc16",
-];
-
-function colorForIndex(i: number): string {
-  return TREE_COLORS[i % TREE_COLORS.length];
-}
-
 onMounted(() => {
   skillStore.fetchTrees();
 });
@@ -45,10 +28,9 @@ async function onUnlock(nodeId: number) {
 
     <div v-else class="trees-panorama">
       <SkillTreeCanvas
-        v-for="(tree, i) in skillStore.trees"
+        v-for="tree in skillStore.trees"
         :key="tree.id"
         :tree="tree"
-        :color="colorForIndex(i)"
         @unlock="onUnlock"
       />
     </div>

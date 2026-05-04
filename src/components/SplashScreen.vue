@@ -1,3 +1,4 @@
+<script setup lang="ts">
 // ═══════════════════════════════════════════════════════════════
 //  COMPONENTE: SplashScreen (Pantalla de Inicio Retro)
 // ═══════════════════════════════════════════════════════════════
@@ -10,8 +11,6 @@
 //   3. Redimensiona la ventana de Tauri (de pequeña a grande)
 //   4. Emite el evento "start" para que App.vue oculte este componente
 // ═══════════════════════════════════════════════════════════════
-
-<script setup lang="ts">
 // ── IMPORTS ──
 // `ref`: variable reactiva (cambia la UI automáticamente).
 // `onMounted`: hook que se ejecuta cuando el componente se monta en el DOM.

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useSkillStore } from "../stores/skillStore";
-import SkillTreeView from "../components/SkillTreeView.vue";
+import SkillTreeCanvas from "../components/SkillTreeCanvas.vue";
 import PixelIcon from "../components/PixelIcon.vue";
 
 const skillStore = useSkillStore();
@@ -15,6 +15,18 @@ const ICON_OPTIONS = [
 const showCreateTree = ref(false);
 const newTreeType = ref("");
 const newTreeIcon = ref("");
+const newTreeColor = ref("#a855f7");
+
+const COLOR_OPTIONS = [
+  { hex: "#a855f7", name: "Arcane" },
+  { hex: "#22c55e", name: "Nature" },
+  { hex: "#ef4444", name: "Flame" },
+  { hex: "#3b82f6", name: "Frost" },
+  { hex: "#f97316", name: "Inferno" },
+  { hex: "#06b6d4", name: "Storm" },
+  { hex: "#ec4899", name: "Void" },
+  { hex: "#eab308", name: "Gold" },
+];
 
 const showCreateNode = ref(false);
 const newNodeName = ref("");
@@ -30,9 +42,14 @@ onMounted(() => {
 
 async function createTree() {
   if (!newTreeType.value.trim()) return;
-  await skillStore.addTree(newTreeType.value.trim().toLowerCase(), newTreeIcon.value.trim());
+  await skillStore.addTree(
+    newTreeType.value.trim().toLowerCase(),
+    newTreeIcon.value.trim(),
+    newTreeColor.value,
+  );
   newTreeType.value = "";
   newTreeIcon.value = "";
+  newTreeColor.value = "#a855f7";
   showCreateTree.value = false;
 }
 
@@ -108,11 +125,17 @@ async function onUnlock(nodeId: number) {
       </button>
     </div>
 
-    <SkillTreeView
+    <div
       v-if="skillStore.selectedTree"
-      :tree="skillStore.selectedTree"
-      @unlock="onUnlock"
-    />
+      class="tree-canvas-container anim-slide-up delay-1"
+    >
+      <SkillTreeCanvas
+        :tree="skillStore.selectedTree"
+        :color="skillStore.selectedTree.color"
+        :show-label="false"
+        @unlock="onUnlock"
+      />
+    </div>
 
     <p v-else-if="!skillStore.loading" class="empty-state anim-pop-in">
       No hay árboles de habilidades. Crea uno para empezar.
@@ -141,6 +164,21 @@ async function onUnlock(nodeId: number) {
             >
               <PixelIcon :name="icon" :size="16" />
             </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Color del Reino</label>
+          <div class="color-picker">
+            <button
+              v-for="c in COLOR_OPTIONS"
+              :key="c.hex"
+              class="color-option"
+              :class="{ selected: newTreeColor === c.hex }"
+              :style="{ background: c.hex, boxShadow: newTreeColor === c.hex ? `0 0 0 3px ${c.hex}66, 0 0 12px ${c.hex}` : 'none' }"
+              @click="newTreeColor = c.hex"
+              type="button"
+              :title="c.name"
+            />
           </div>
         </div>
         <div class="modal-actions">
@@ -354,6 +392,33 @@ async function onUnlock(nodeId: number) {
   color: var(--accent, #a855f7);
 }
 
+/* ── CONTENEDOR DEL CANVAS DE ÁRBOL ── */
+/* Envuelve SkillTreeCanvas y permite scroll horizontal cuando el árbol
+   crece más ancho que la pantalla. Esto evita que los nodos se amontonen. */
+.tree-canvas-container {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1rem 0;
+  display: flex;
+  justify-content: center; /* Centra el canvas si cabe */
+  min-height: 0;
+}
+
+/* Estilos de scrollbar para el contenedor del canvas */
+.tree-canvas-container::-webkit-scrollbar {
+  height: 8px;
+}
+
+.tree-canvas-container::-webkit-scrollbar-track {
+  background: #0a0a1a;
+  border-radius: 3px;
+}
+
+.tree-canvas-container::-webkit-scrollbar-thumb {
+  background: #2a2a4a;
+  border-radius: 3px;
+}
+
 .empty-state {
   text-align: center;
   color: #555;
@@ -491,5 +556,29 @@ select:focus {
   border-color: var(--accent, #a855f7);
   background: var(--accent-glow, rgba(168, 85, 247, 0.3));
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* ── COLOR PICKER (Selector de Color del Reino) ── */
+.color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.color-option {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border-color, #312e81);
+  cursor: pointer;
+  transition: all 0.12s;
+  padding: 0;
+}
+
+.color-option:hover {
+  transform: scale(1.15);
+}
+
+.color-option.selected {
+  border-color: #fff;
 }
 </style>

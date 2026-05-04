@@ -93,12 +93,13 @@ export const useSkillStore = defineStore("skills", () => {
    * Crea un nuevo árbol de habilidades para una categoría de tarea.
    * `taskType`: nombre de la categoría (ej: "coding", "fitness").
    * `icon`: nombre del icono pixel-art.
+   * `color`: color HEX del árbol (ej: "#a855f7").
    * Llama al backend y agrega el árbol al array local.
    */
-  async function addTree(taskType: string, icon: string) {
+  async function addTree(taskType: string, icon: string, color: string) {
     error.value = null;
     try {
-      const tree = await tauriService.createSkillTree(taskType, icon);
+      const tree = await tauriService.createSkillTree(taskType, icon, color);
       trees.value.push(tree);
       return tree;
     } catch (e) {

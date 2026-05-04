@@ -1,3 +1,4 @@
+<script setup lang="ts">
 // ═══════════════════════════════════════════════════════════════
 //  COMPONENTE: ThemeSwitcher (Selector de Temas / Reinos)
 // ═══════════════════════════════════════════════════════════════
@@ -6,8 +7,6 @@
 // que cambian la apariencia de TODA la aplicación instantáneamente.
 // Persiste la selección en localStorage para recordarla entre sesiones.
 // ═══════════════════════════════════════════════════════════════
-
-<script setup lang="ts">
 // `ref`: variable reactiva (cambia la UI automáticamente).
 import { ref } from "vue";
 import PixelIcon from "./PixelIcon.vue";

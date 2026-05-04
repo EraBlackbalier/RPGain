@@ -76,6 +76,7 @@ pub struct SkillTree {
     pub id: i64,
     pub task_type: String,
     pub icon: String,
+    pub color: String,
     pub created_at: String,
     pub nodes: Vec<SkillNode>,
     pub available_xp: i64,
@@ -465,7 +466,7 @@ fn fetch_nodes_for_tree(conn: &rusqlite::Connection, tree_id: i64) -> Result<Vec
     Ok(nodes)
 }
 
-fn build_skill_tree(conn: &rusqlite::Connection, id: i64, task_type: &str, icon: &str, created_at: &str) -> Result<SkillTree, String> {
+fn build_skill_tree(conn: &rusqlite::Connection, id: i64, task_type: &str, icon: &str, color: &str, created_at: &str) -> Result<SkillTree, String> {
     let nodes = fetch_nodes_for_tree(conn, id)?;
     let available_xp = get_xp_for_type(conn, task_type)?;
     let spent_xp = get_spent_xp_for_tree(conn, id)?;
@@ -473,6 +474,7 @@ fn build_skill_tree(conn: &rusqlite::Connection, id: i64, task_type: &str, icon:
         id,
         task_type: task_type.to_string(),
         icon: icon.to_string(),
+        color: color.to_string(),
         created_at: created_at.to_string(),
         nodes,
         available_xp,
@@ -486,32 +488,32 @@ fn build_skill_tree(conn: &rusqlite::Connection, id: i64, task_type: &str, icon:
 fn get_skill_trees(db: State<Database>) -> Result<Vec<SkillTree>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, task_type, icon, created_at FROM skill_trees ORDER BY task_type ASC")
+        .prepare("SELECT id, task_type, icon, color, created_at FROM skill_trees ORDER BY task_type ASC")
         .map_err(|e| e.to_string())?;
-    let rows: Vec<(i64, String, String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+    let rows: Vec<(i64, String, String, String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)))
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
     let mut trees = Vec::new();
-    for (id, task_type, icon, created_at) in rows {
-        trees.push(build_skill_tree(&conn, id, &task_type, &icon, &created_at)?);
+    for (id, task_type, icon, color, created_at) in rows {
+        trees.push(build_skill_tree(&conn, id, &task_type, &icon, &color, &created_at)?);
     }
     Ok(trees)
 }
 
 #[tauri::command]
-fn create_skill_tree(db: State<Database>, task_type: String, icon: String) -> Result<SkillTree, String> {
+fn create_skill_tree(db: State<Database>, task_type: String, icon: String, color: String) -> Result<SkillTree, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let now = chrono::Local::now().to_rfc3339();
     conn.execute(
-        "INSERT INTO skill_trees (task_type, icon, created_at) VALUES (?1, ?2, ?3)",
-        params![task_type, icon, now],
+        "INSERT INTO skill_trees (task_type, icon, color, created_at) VALUES (?1, ?2, ?3, ?4)",
+        params![task_type, icon, color, now],
     )
     .map_err(|e| format!("Tree already exists or error: {}", e))?;
     let id = conn.last_insert_rowid();
-    build_skill_tree(&conn, id, &task_type, &icon, &now)
+    build_skill_tree(&conn, id, &task_type, &icon, &color, &now)
 }
 
 #[tauri::command]
@@ -597,11 +599,14 @@ fn unlock_skill_node(db: State<Database>, node_id: i64) -> Result<SkillTree, Str
     let tree_icon: String = conn
         .query_row("SELECT icon FROM skill_trees WHERE id = ?1", params![node.tree_id], |row| row.get(0))
         .map_err(|e| e.to_string())?;
+    let tree_color: String = conn
+        .query_row("SELECT color FROM skill_trees WHERE id = ?1", params![node.tree_id], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
     let tree_created: String = conn
         .query_row("SELECT created_at FROM skill_trees WHERE id = ?1", params![node.tree_id], |row| row.get(0))
         .map_err(|e| e.to_string())?;
 
-    build_skill_tree(&conn, node.tree_id, &tree_type, &tree_icon, &tree_created)
+    build_skill_tree(&conn, node.tree_id, &tree_type, &tree_icon, &tree_color, &tree_created)
 }
 
 #[tauri::command]

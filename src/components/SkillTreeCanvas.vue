@@ -5,8 +5,12 @@ import PixelIcon from "./PixelIcon.vue";
 
 const props = defineProps<{
   tree: SkillTree;
-  color: string;
+  color?: string;
+  showLabel?: boolean;
 }>();
+
+/** Color efectivo: usa la prop `color` si se pasa, sino el color persistente del árbol. */
+const treeColor = computed(() => props.color || props.tree.color || "#a855f7");
 
 const emit = defineEmits<{
   (e: "unlock", nodeId: number): void;
@@ -33,41 +37,121 @@ const maxTier = computed(() => {
   return tiers.value[tiers.value.length - 1][0];
 });
 
-const maxNodesInTier = computed(() => {
-  let max = 1;
-  for (const [, nodes] of tiers.value) {
-    if (nodes.length > max) max = nodes.length;
-  }
-  return max;
-});
-
-const canvasWidth = computed(() => Math.max(maxNodesInTier.value * H_GAP + 60, 200));
-const canvasHeight = computed(() => (maxTier.value + 1) * V_GAP + 140);
-
 interface NodePos {
   node: SkillNode;
   x: number;
   y: number;
 }
 
-const nodePositions = computed<NodePos[]>(() => {
+/**
+ * Calcula posiciones de nodos en un layout de árbol jerárquico.
+ * - Los nodos raíz (tier 0) se centran.
+ * - Los hijos de cada nodo se colocan DEBAJO y CENTRADOS respecto a su padre.
+ * - Se detectan y corrigen solapamientos entre nodos del mismo tier.
+ * - Todo el árbol se centra horizontalmente en el canvas.
+ *
+ * `x` es RELATIVO al centro del canvas (0 = centro).
+ */
+const rawPositions = computed<NodePos[]>(() => {
   const positions: NodePos[] = [];
-  const centerX = canvasWidth.value / 2;
+  if (props.tree.nodes.length === 0) return positions;
 
-  for (const [tierNum, nodes] of tiers.value) {
-    const tierY = canvasHeight.value - 80 - tierNum * V_GAP;
-    const totalWidth = (nodes.length - 1) * H_GAP;
-    const startX = centerX - totalWidth / 2;
+  // Agrupar nodos por tier para procesar de arriba hacia abajo
+  const nodesByTier = new Map<number, SkillNode[]>();
+  for (const node of props.tree.nodes) {
+    const list = nodesByTier.get(node.tier) || [];
+    list.push(node);
+    nodesByTier.set(node.tier, list);
+  }
 
-    for (let i = 0; i < nodes.length; i++) {
-      positions.push({
-        node: nodes[i],
-        x: startX + i * H_GAP,
-        y: tierY,
-      });
+  const tierNums = Array.from(nodesByTier.keys()).sort((a, b) => a - b);
+
+  // Helper: buscar posición ya asignada a un nodo
+  function findPos(nodeId: number): NodePos | undefined {
+    return positions.find((p) => p.node.id === nodeId);
+  }
+
+  for (const tierNum of tierNums) {
+    const nodes = nodesByTier.get(tierNum)!;
+    const tierY = (maxTier.value - tierNum) * V_GAP + 60;
+
+    if (tierNum === 0) {
+      // Raíces: distribuir centradas en x=0
+      const totalWidth = (nodes.length - 1) * H_GAP;
+      const startX = -totalWidth / 2;
+      for (let i = 0; i < nodes.length; i++) {
+        positions.push({
+          node: nodes[i],
+          x: startX + i * H_GAP,
+          y: tierY,
+        });
+      }
+    } else {
+      // Agrupar hijos por su parent_id
+      const byParent = new Map<number | null, SkillNode[]>();
+      for (const node of nodes) {
+        const pid = node.parent_id;
+        const list = byParent.get(pid) || [];
+        list.push(node);
+        byParent.set(pid, list);
+      }
+
+      // Colocar cada grupo centrado bajo su padre
+      for (const [parentId, children] of byParent) {
+        let centerX = 0;
+        if (parentId !== null) {
+          const parentPos = findPos(parentId);
+          if (parentPos) centerX = parentPos.x;
+        }
+        const childWidth = (children.length - 1) * H_GAP;
+        const startX = centerX - childWidth / 2;
+        for (let i = 0; i < children.length; i++) {
+          positions.push({
+            node: children[i],
+            x: startX + i * H_GAP,
+            y: tierY,
+          });
+        }
+      }
+    }
+
+    // ── CORRECCIÓN DE SOLAPAMIENTOS ──
+    // Ordenar nodos de este tier por x, y si dos están muy cerca,
+    // empujar el de la derecha para mantener separación mínima H_GAP.
+    const tierPos = positions
+      .filter((p) => p.node.tier === tierNum)
+      .sort((a, b) => a.x - b.x);
+
+    for (let i = 1; i < tierPos.length; i++) {
+      const prev = tierPos[i - 1];
+      const curr = tierPos[i];
+      if (curr.x - prev.x < H_GAP) {
+        curr.x = prev.x + H_GAP;
+      }
     }
   }
+
   return positions;
+});
+
+/** Ancho del canvas basado en el rango real de posiciones + márgenes. */
+const canvasWidth = computed(() => {
+  if (rawPositions.value.length === 0) return 300;
+  const minX = Math.min(...rawPositions.value.map((p) => p.x));
+  const maxX = Math.max(...rawPositions.value.map((p) => p.x));
+  return Math.max(maxX - minX + NODE_SIZE + 80, 300);
+});
+
+/** Alto del canvas basado en la cantidad de tiers. */
+const canvasHeight = computed(() => (maxTier.value + 1) * V_GAP + 140);
+
+/** Posiciones finales con offset para centrar en el canvas real. */
+const nodePositions = computed<NodePos[]>(() => {
+  const offsetX = canvasWidth.value / 2;
+  return rawPositions.value.map((p) => ({
+    ...p,
+    x: p.x + offsetX,
+  }));
 });
 
 const connections = computed(() => {
@@ -109,23 +193,56 @@ const hoveredNode = ref<number | null>(null);
 
 <template>
   <div class="tree-canvas-wrap">
-    <div class="tree-root-label">
+    <div v-if="showLabel !== false" class="tree-root-label">
       <PixelIcon class="root-icon" :name="tree.icon || 'tree'" :size="24" />
       <span class="root-name">{{ tree.task_type }}</span>
-      <span class="root-xp" :style="{ color }">{{ remainingXp }}</span>
+      <span class="root-xp" :style="{ color: treeColor }">{{ remainingXp }}</span>
     </div>
 
     <div class="tree-canvas" :style="{ width: canvasWidth + 'px', height: canvasHeight + 'px' }">
       <svg class="connections-svg" :width="canvasWidth" :height="canvasHeight">
+        <!-- Definiciones de filtros SVG para glow pulsante -->
+        <defs>
+          <filter id="glow-pulse" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="glow-static" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <!-- Conexiones base (siempre visibles, tenues cuando bloqueadas) -->
         <path
           v-for="(c, i) in connections"
-          :key="i"
+          :key="'base-' + i"
           :d="pathD(c)"
           fill="none"
-          :stroke="c.unlocked ? color : '#2a2a4a'"
+          :stroke="c.unlocked ? treeColor : '#2a2a4a'"
           :stroke-width="c.unlocked ? 3 : 2"
-          :opacity="c.unlocked ? 1 : 0.4"
+          :opacity="c.unlocked ? 0.6 : 0.35"
           stroke-linecap="round"
+        />
+
+        <!-- Glow pulsante SOLO en conexiones desbloqueadas -->
+        <path
+          v-for="(c, i) in connections.filter(c => c.unlocked)"
+          :key="'glow-' + i"
+          :d="pathD(c)"
+          fill="none"
+          :stroke="treeColor"
+          stroke-width="6"
+          stroke-linecap="round"
+          opacity="0.35"
+          class="connection-glow"
+          :style="{ filter: `drop-shadow(0 0 6px ${treeColor})` }"
         />
       </svg>
 
@@ -144,10 +261,10 @@ const hoveredNode = ref<number | null>(null);
           top: pos.y - NODE_SIZE / 2 + 'px',
           width: NODE_SIZE + 'px',
           height: NODE_SIZE + 'px',
-          '--node-color': color,
-          borderColor: pos.node.unlocked ? color : canUnlock(pos.node) ? color : '#2a2a4a',
-          background: pos.node.unlocked ? color + '22' : '#0a0a1a',
-          boxShadow: pos.node.unlocked ? `0 0 14px ${color}44` : canUnlock(pos.node) ? `0 0 10px ${color}33` : 'none',
+          '--node-color': treeColor,
+          borderColor: pos.node.unlocked ? treeColor : canUnlock(pos.node) ? treeColor : '#2a2a4a',
+          background: pos.node.unlocked ? treeColor + '22' : '#0a0a1a',
+          boxShadow: pos.node.unlocked ? `0 0 14px ${treeColor}44` : canUnlock(pos.node) ? `0 0 10px ${treeColor}33` : 'none',
         }"
         @mouseenter="hoveredNode = pos.node.id"
         @mouseleave="hoveredNode = null"
@@ -250,6 +367,16 @@ const hoveredNode = ref<number | null>(null);
 
 .node-icon {
   font-size: 1.2rem;
+}
+
+/* Glow pulsante en conexiones desbloqueadas */
+.connection-glow {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.55; }
 }
 
 .node-tooltip {

@@ -142,10 +142,11 @@ export async function getSkillTrees(): Promise<SkillTree[]> {
  * Crea un nuevo árbol de habilidades para una categoría de tarea.
  * `taskType`: nombre de la categoría (ej: "coding", "fitness").
  * `icon`: nombre del icono pixel-art que se mostrará.
+ * `color`: color HEX del árbol (ej: "#a855f7").
  * Llama al comando Rust `create_skill_tree`.
  */
-export async function createSkillTree(taskType: string, icon: string): Promise<SkillTree> {
-  return await invoke<SkillTree>("create_skill_tree", { taskType, icon });
+export async function createSkillTree(taskType: string, icon: string, color: string): Promise<SkillTree> {
+  return await invoke<SkillTree>("create_skill_tree", { taskType, icon, color });
 }
 
 /**

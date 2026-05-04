@@ -16,6 +16,7 @@ export interface SkillTree {
   id: number;                    // ID único del árbol
   task_type: string;           // Categoría de tarea (ej: "coding", "estudio")
   icon: string | null;         // Nombre del icono pixel-art (o null si no tiene)
+  color: string;               // Color HEX del árbol (ej: "#a855f7")
   created_at: string;            // Fecha de creación en formato ISO
   available_xp: number;        // XP TOTAL ganada en esta categoría (desde xp_logs)
   spent_xp: number;            // XP YA GASTADA en nodos desbloqueados

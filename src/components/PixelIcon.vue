@@ -1,3 +1,4 @@
+<script setup lang="ts">
 // ═══════════════════════════════════════════════════════════════
 //  COMPONENTE: PixelIcon (Icono Pixel-Art SVG)
 // ═══════════════════════════════════════════════════════════════
@@ -6,8 +7,6 @@
 // Busca el SVG correspondiente en un diccionario (ICONS) y lo inyecta
 // dentro de un elemento <svg> usando `v-html`.
 // ═══════════════════════════════════════════════════════════════
-
-<script setup lang="ts">
 // `defineProps`: declaramos las propiedades (props) que este componente recibe.
 // `name`: obligatorio, string. Identifica qué icono mostrar.
 // `size`: opcional, number. Tamaño en píxeles (default 16).

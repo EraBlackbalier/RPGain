@@ -1,3 +1,4 @@
+<script setup lang="ts">
 // ═══════════════════════════════════════════════════════════════
 //  COMPONENTE: AppTopbar (Barra Superior de Navegación)
 // ═══════════════════════════════════════════════════════════════
@@ -6,8 +7,6 @@
 // una barra mini de XP, y el selector de temas (ThemeSwitcher).
 // Es fijo en la parte superior y está presente en todas las vistas.
 // ═══════════════════════════════════════════════════════════════
-
-<script setup lang="ts">
 // ── IMPORTS ──
 // `computed`: crea propiedades calculadas (reactivas, se recalculan automáticamente).
 // `useRouter` / `useRoute`: hooks de vue-router para navegar y saber en qué ruta estamos.
