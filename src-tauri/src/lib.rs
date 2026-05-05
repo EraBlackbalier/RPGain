@@ -739,10 +739,184 @@ fn get_active_session(db: State<Database>) -> Result<Option<Session>, String> {
     Ok(session)
 }
 
+// --- Import / Export ---
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportData {
+    pub rpgain_version: String,
+    pub exported_at: String,
+    pub tasks: Vec<Task>,
+    pub skill_trees: Vec<ExportSkillTree>,
+    pub xp_logs: Vec<XPLog>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportSkillTree {
+    pub task_type: String,
+    pub icon: String,
+    pub color: String,
+    pub nodes: Vec<ExportSkillNode>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportSkillNode {
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub xp_cost: i64,
+    pub tier: i64,
+    pub parent_index: Option<usize>,
+    pub unlocked: bool,
+}
+
+#[tauri::command]
+fn export_session_data(db: State<Database>, session_id: i64) -> Result<String, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    // Tasks
+    let sql = format!("{} WHERE session_id = ?1 ORDER BY id ASC", TASK_SELECT);
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let tasks: Vec<Task> = stmt
+        .query_map(params![session_id], row_to_task)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    // Skill trees
+    let mut tree_stmt = conn
+        .prepare("SELECT id, task_type, icon, color FROM skill_trees WHERE session_id = ?1 ORDER BY id ASC")
+        .map_err(|e| e.to_string())?;
+    let tree_rows: Vec<(i64, String, String, String)> = tree_stmt
+        .query_map(params![session_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut export_trees = Vec::new();
+    for (tree_id, task_type, icon, color) in tree_rows {
+        let nodes = fetch_nodes_for_tree(&conn, tree_id)?;
+        // Build parent_index mapping: map parent_id to index in the nodes vec
+        let node_ids: Vec<i64> = nodes.iter().map(|n| n.id).collect();
+        let export_nodes: Vec<ExportSkillNode> = nodes.iter().map(|n| {
+            let parent_index = n.parent_id.and_then(|pid| node_ids.iter().position(|&id| id == pid));
+            ExportSkillNode {
+                name: n.name.clone(),
+                description: n.description.clone(),
+                icon: n.icon.clone(),
+                xp_cost: n.xp_cost,
+                tier: n.tier,
+                parent_index,
+                unlocked: n.unlocked,
+            }
+        }).collect();
+        export_trees.push(ExportSkillTree { task_type, icon, color, nodes: export_nodes });
+    }
+
+    // XP logs
+    let mut log_stmt = conn
+        .prepare("SELECT id, task_id, task_type, action, xp_amount, created_at FROM xp_logs WHERE session_id = ?1 ORDER BY id ASC")
+        .map_err(|e| e.to_string())?;
+    let xp_logs: Vec<XPLog> = log_stmt
+        .query_map(params![session_id], |row| {
+            Ok(XPLog {
+                id: row.get(0)?,
+                task_id: row.get(1)?,
+                task_type: row.get(2)?,
+                action: row.get(3)?,
+                xp_amount: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let export = ExportData {
+        rpgain_version: "0.1.0".to_string(),
+        exported_at: chrono::Local::now().to_rfc3339(),
+        tasks,
+        skill_trees: export_trees,
+        xp_logs,
+    };
+
+    serde_json::to_string_pretty(&export).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_session_data(db: State<Database>, session_id: i64, json_data: String) -> Result<String, String> {
+    let data: ExportData = serde_json::from_str(&json_data)
+        .map_err(|e| format!("Invalid RPGain file: {}", e))?;
+
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Local::now().to_rfc3339();
+
+    let mut tasks_imported = 0i64;
+    let mut trees_imported = 0i64;
+    let mut logs_imported = 0i64;
+
+    // Import tasks
+    for t in &data.tasks {
+        let types_json = serde_json::to_string(&t.types).map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO tasks (session_id, title, description, types, priority, task_kind, xp_reward, progress, progress_total, completed, iteration_count, created_at, completed_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![session_id, t.title, t.description, types_json, t.priority, t.task_kind, t.xp_reward, t.progress, t.progress_total, t.completed as i64, t.iteration_count, t.created_at, t.completed_at],
+        ).map_err(|e| e.to_string())?;
+        tasks_imported += 1;
+    }
+
+    // Import skill trees + nodes
+    for tree in &data.skill_trees {
+        // Check if tree with this type already exists for this session
+        let existing: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM skill_trees WHERE session_id = ?1 AND task_type = ?2",
+                params![session_id, tree.task_type],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+
+        let tree_id = if let Some(id) = existing {
+            id
+        } else {
+            conn.execute(
+                "INSERT INTO skill_trees (session_id, task_type, icon, color, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![session_id, tree.task_type, tree.icon, tree.color, now],
+            ).map_err(|e| e.to_string())?;
+            conn.last_insert_rowid()
+        };
+
+        // Insert nodes, tracking new IDs for parent references
+        let mut new_node_ids: Vec<i64> = Vec::new();
+        for node in &tree.nodes {
+            let parent_id: Option<i64> = node.parent_index.map(|idx| new_node_ids[idx]);
+            conn.execute(
+                "INSERT INTO skill_nodes (tree_id, name, description, icon, xp_cost, tier, parent_id, unlocked, unlocked_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![tree_id, node.name, node.description, node.icon, node.xp_cost, node.tier, parent_id, node.unlocked as i64, if node.unlocked { Some(now.clone()) } else { None }],
+            ).map_err(|e| e.to_string())?;
+            new_node_ids.push(conn.last_insert_rowid());
+        }
+        trees_imported += 1;
+    }
+
+    // Import XP logs
+    for log in &data.xp_logs {
+        conn.execute(
+            "INSERT INTO xp_logs (session_id, task_id, task_type, action, xp_amount, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![session_id, 0, log.task_type, log.action, log.xp_amount, log.created_at],
+        ).map_err(|e| e.to_string())?;
+        logs_imported += 1;
+    }
+
+    Ok(format!("Imported: {} tasks, {} skill trees, {} XP logs", tasks_imported, trees_imported, logs_imported))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--autostarted"])))
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_dir = app
@@ -776,6 +950,8 @@ pub fn run() {
             create_session,
             set_active_session,
             get_active_session,
+            export_session_data,
+            import_session_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

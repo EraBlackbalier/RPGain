@@ -22,6 +22,7 @@ import { useSessionStore } from "../stores/sessionStore";
 import PixelIcon from "./PixelIcon.vue";
 import ThemeSwitcher from "./ThemeSwitcher.vue";
 import AutostartToggle from "./AutostartToggle.vue";
+import ImportExportMenu from "./ImportExportMenu.vue";
 import { playClick, playHover } from "../composables/usePixelSound";
 
 // Instancias del router y ruta actual (para resaltar el botón activo).
@@ -152,6 +153,8 @@ function badgeFor(path: string): string | null {
         </div>
         <span class="xp-mini-text">LVL {{ playerLevel }}</span>
       </div>
+      <!-- ImportExportMenu: importar/exportar datos de sesión. -->
+      <ImportExportMenu />
       <!-- AutostartToggle: activa/desactiva inicio con Windows. -->
       <AutostartToggle />
       <!-- ThemeSwitcher: componente para cambiar entre los 10 temas de color. -->

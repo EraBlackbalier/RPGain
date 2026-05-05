@@ -206,6 +206,16 @@ export async function getActiveSession(): Promise<Session | null> {
   return await invoke<Session | null>("get_active_session");
 }
 
+// ── IMPORT / EXPORT ──
+
+export async function exportSessionData(sessionId: number): Promise<string> {
+  return await invoke<string>("export_session_data", { sessionId });
+}
+
+export async function importSessionData(sessionId: number, jsonData: string): Promise<string> {
+  return await invoke<string>("import_session_data", { sessionId, jsonData });
+}
+
 // ── HEALTH CHECK ──
 
 /**
