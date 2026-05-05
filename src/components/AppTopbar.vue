@@ -50,6 +50,7 @@ const navItems = [
   { path: "/skills", label: "Skills", icon: "star" },
   { path: "/skill-trees", label: "Skill Trees", icon: "tree" },
   { path: "/bosses", label: "Bosses", icon: "skull" },
+  { path: "/inventory", label: "Inventario", icon: "chest" },
 ];
 
 /** Navega a una ruta y reproduce el sonido de click retro. */

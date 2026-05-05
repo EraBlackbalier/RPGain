@@ -1,7 +1,7 @@
 use rusqlite::{Connection, Result, params};
 use std::sync::Mutex;
 
-const CURRENT_DB_VERSION: i64 = 7;
+const CURRENT_DB_VERSION: i64 = 8;
 
 pub struct Database {
     pub conn: Mutex<Connection>,
@@ -282,6 +282,29 @@ impl Database {
                 CREATE INDEX IF NOT EXISTS idx_bosses_session ON bosses(session_id);
                 CREATE INDEX IF NOT EXISTS idx_boss_req_boss ON boss_requirements(boss_id);
                 CREATE INDEX IF NOT EXISTS idx_boss_rew_boss ON boss_rewards(boss_id);"
+            )?;
+        }
+
+        if version < 8 {
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS attributes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL DEFAULT 1,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    icon TEXT NOT NULL DEFAULT 'gem',
+                    category TEXT NOT NULL DEFAULT 'buff',
+                    source TEXT NOT NULL DEFAULT 'manual',
+                    source_id INTEGER,
+                    effect_type TEXT NOT NULL DEFAULT 'cosmetic',
+                    effect_value REAL NOT NULL DEFAULT 0,
+                    rarity INTEGER NOT NULL DEFAULT 1,
+                    unlocked INTEGER NOT NULL DEFAULT 0,
+                    equipped INTEGER NOT NULL DEFAULT 0,
+                    unlocked_at TEXT,
+                    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_attributes_session ON attributes(session_id);"
             )?;
         }
 

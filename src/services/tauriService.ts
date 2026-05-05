@@ -19,6 +19,7 @@ import type { SkillTree, SkillNode, CreateSkillNodePayload } from "../models/Ski
 import type { Character } from "../models/Character";
 import type { Session } from "../models/Session";
 import type { Boss, CreateBossPayload } from "../models/Boss";
+import type { Attribute, CreateAttributePayload } from "../models/Attribute";
 
 // ── TAREAS (Tasks) ──
 
@@ -231,6 +232,32 @@ export async function defeatBoss(bossId: number, sessionId: number): Promise<Bos
 
 export async function checkBossRequirements(bossId: number, sessionId: number): Promise<Boss> {
   return await invoke<Boss>("check_boss_requirements", { bossId, sessionId });
+}
+
+// ── ATTRIBUTES ──
+
+export async function getAttributes(sessionId: number): Promise<Attribute[]> {
+  return await invoke<Attribute[]>("get_attributes", { sessionId });
+}
+
+export async function createAttribute(payload: CreateAttributePayload): Promise<Attribute> {
+  return await invoke<Attribute>("create_attribute", { payload });
+}
+
+export async function deleteAttribute(attributeId: number): Promise<void> {
+  return await invoke<void>("delete_attribute", { attributeId });
+}
+
+export async function unlockAttribute(attributeId: number): Promise<Attribute> {
+  return await invoke<Attribute>("unlock_attribute", { attributeId });
+}
+
+export async function toggleEquipAttribute(attributeId: number): Promise<Attribute> {
+  return await invoke<Attribute>("toggle_equip_attribute", { attributeId });
+}
+
+export async function getActiveEffects(sessionId: number): Promise<Attribute[]> {
+  return await invoke<Attribute[]>("get_active_effects", { sessionId });
 }
 
 // ── IMPORT / EXPORT ──

@@ -192,6 +192,38 @@ pub struct CreateRewardPayload {
     pub description: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Attribute {
+    pub id: i64,
+    pub session_id: i64,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub category: String,
+    pub source: String,
+    pub source_id: Option<i64>,
+    pub effect_type: String,
+    pub effect_value: f64,
+    pub rarity: i64,
+    pub unlocked: bool,
+    pub equipped: bool,
+    pub unlocked_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateAttributePayload {
+    pub session_id: i64,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub category: String,
+    pub source: String,
+    pub source_id: Option<i64>,
+    pub effect_type: String,
+    pub effect_value: f64,
+    pub rarity: i64,
+}
+
 // --- Helpers ---
 
 fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
@@ -1069,6 +1101,98 @@ fn check_boss_requirements(db: State<Database>, boss_id: i64, session_id: i64) -
     fetch_boss_full(&conn, boss_id)
 }
 
+// --- Attribute Commands ---
+
+const ATTR_SELECT: &str =
+    "SELECT id, session_id, name, description, icon, category, source, source_id, effect_type, effect_value, rarity, unlocked, equipped, unlocked_at FROM attributes";
+
+fn row_to_attribute(row: &rusqlite::Row) -> rusqlite::Result<Attribute> {
+    Ok(Attribute {
+        id: row.get(0)?,
+        session_id: row.get(1)?,
+        name: row.get(2)?,
+        description: row.get(3)?,
+        icon: row.get(4)?,
+        category: row.get(5)?,
+        source: row.get(6)?,
+        source_id: row.get(7)?,
+        effect_type: row.get(8)?,
+        effect_value: row.get(9)?,
+        rarity: row.get(10)?,
+        unlocked: row.get::<_, i64>(11)? != 0,
+        equipped: row.get::<_, i64>(12)? != 0,
+        unlocked_at: row.get(13)?,
+    })
+}
+
+#[tauri::command]
+fn get_attributes(db: State<Database>, session_id: i64) -> Result<Vec<Attribute>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE session_id = ?1 ORDER BY rarity DESC, id ASC", ATTR_SELECT);
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let attrs = stmt.query_map(params![session_id], row_to_attribute)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    Ok(attrs)
+}
+
+#[tauri::command]
+fn create_attribute(db: State<Database>, payload: CreateAttributePayload) -> Result<Attribute, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO attributes (session_id, name, description, icon, category, source, source_id, effect_type, effect_value, rarity, unlocked, equipped) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, 0)",
+        params![payload.session_id, payload.name, payload.description, payload.icon, payload.category, payload.source, payload.source_id, payload.effect_type, payload.effect_value, payload.rarity],
+    ).map_err(|e| e.to_string())?;
+    let id = conn.last_insert_rowid();
+    let sql = format!("{} WHERE id = ?1", ATTR_SELECT);
+    conn.query_row(&sql, params![id], row_to_attribute).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_attribute(db: State<Database>, attribute_id: i64) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM attributes WHERE id = ?1", params![attribute_id]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn unlock_attribute(db: State<Database>, attribute_id: i64) -> Result<Attribute, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Local::now().to_rfc3339();
+    conn.execute(
+        "UPDATE attributes SET unlocked = 1, unlocked_at = ?1 WHERE id = ?2",
+        params![now, attribute_id],
+    ).map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE id = ?1", ATTR_SELECT);
+    conn.query_row(&sql, params![attribute_id], row_to_attribute).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn toggle_equip_attribute(db: State<Database>, attribute_id: i64) -> Result<Attribute, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let current: i64 = conn.query_row(
+        "SELECT equipped FROM attributes WHERE id = ?1", params![attribute_id], |row| row.get(0),
+    ).map_err(|e| format!("Attribute not found: {}", e))?;
+    let new_val = if current != 0 { 0 } else { 1 };
+    conn.execute(
+        "UPDATE attributes SET equipped = ?1 WHERE id = ?2",
+        params![new_val, attribute_id],
+    ).map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE id = ?1", ATTR_SELECT);
+    conn.query_row(&sql, params![attribute_id], row_to_attribute).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_active_effects(db: State<Database>, session_id: i64) -> Result<Vec<Attribute>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE session_id = ?1 AND unlocked = 1 AND equipped = 1 ORDER BY id ASC", ATTR_SELECT);
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let attrs = stmt.query_map(params![session_id], row_to_attribute)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    Ok(attrs)
+}
+
 // --- Import / Export ---
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1286,6 +1410,12 @@ pub fn run() {
             update_boss_requirement,
             defeat_boss,
             check_boss_requirements,
+            get_attributes,
+            create_attribute,
+            delete_attribute,
+            unlock_attribute,
+            toggle_equip_attribute,
+            get_active_effects,
             export_session_data,
             import_session_data,
         ])

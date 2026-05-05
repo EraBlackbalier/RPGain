@@ -17,6 +17,7 @@ import AnalyticsView from "../views/AnalyticsView.vue";
 import SkillsView from "../views/SkillsView.vue";
 import SkillTreesView from "../views/SkillTreesView.vue";
 import BossesView from "../views/BossesView.vue";
+import InventoryView from "../views/InventoryView.vue";
 
 // ── DEFINICIÓN DE RUTAS ──
 // Cada objeto en este array es una ruta.
@@ -49,6 +50,11 @@ const routes = [
     path: "/bosses",
     name: "Bosses",
     component: BossesView,
+  },
+  {
+    path: "/inventory",
+    name: "Inventory",
+    component: InventoryView,
   },
 ];
 
