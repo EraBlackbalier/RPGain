@@ -18,6 +18,7 @@ import type { XPLog, XPByType } from "../models/XP";
 import type { SkillTree, SkillNode, CreateSkillNodePayload } from "../models/Skill";
 import type { Character } from "../models/Character";
 import type { Session } from "../models/Session";
+import type { Boss, CreateBossPayload } from "../models/Boss";
 
 // ── TAREAS (Tasks) ──
 
@@ -204,6 +205,32 @@ export async function setActiveSession(sessionId: number): Promise<Session> {
 
 export async function getActiveSession(): Promise<Session | null> {
   return await invoke<Session | null>("get_active_session");
+}
+
+// ── BOSSES ──
+
+export async function getBosses(sessionId: number): Promise<Boss[]> {
+  return await invoke<Boss[]>("get_bosses", { sessionId });
+}
+
+export async function createBoss(payload: CreateBossPayload): Promise<Boss> {
+  return await invoke<Boss>("create_boss", { payload });
+}
+
+export async function deleteBoss(bossId: number): Promise<void> {
+  return await invoke<void>("delete_boss", { bossId });
+}
+
+export async function updateBossRequirement(requirementId: number, currentValue: number): Promise<Boss> {
+  return await invoke<Boss>("update_boss_requirement", { requirementId, currentValue });
+}
+
+export async function defeatBoss(bossId: number, sessionId: number): Promise<Boss> {
+  return await invoke<Boss>("defeat_boss", { bossId, sessionId });
+}
+
+export async function checkBossRequirements(bossId: number, sessionId: number): Promise<Boss> {
+  return await invoke<Boss>("check_boss_requirements", { bossId, sessionId });
 }
 
 // ── IMPORT / EXPORT ──

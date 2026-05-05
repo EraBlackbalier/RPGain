@@ -1,16 +1,68 @@
 // ═══════════════════════════════════════════════════════════════
-//  MODELO BOSS (Jefe)
+//  MODELO BOSS (Jefe / Reto Complejo)
 // ═══════════════════════════════════════════════════════════════
-// Define la estructura de un "Boss" o jefe del juego.
-// Un Boss es un objetivo grande que se derrota completando
-// un conjunto específico de tareas. Al vencerlo ganas XP.
+// Un Boss es un reto complejo con requisitos múltiples y
+// recompensas significativas. Se desbloquea cumpliendo todos
+// sus requisitos y otorga rewards al ser derrotado.
 // ═══════════════════════════════════════════════════════════════
 
+export type BossStatus = "locked" | "available" | "in_progress" | "defeated";
+export type RequirementType = "tasks_completed" | "xp_earned" | "skill_unlocked" | "level_reached" | "specific_task";
+export type RewardType = "xp" | "title" | "badge";
+
 export interface Boss {
-  id: number;              // ID único del boss (1, 2, 3...)
-  name: string;            // Nombre del jefe (ej: "Procrastinación Final")
-  description: string;     // Descripción de quién es o qué representa
-  required_tasks: number[];// Array de IDs de tareas que debes completar para vencerlo
-  xp_reward: number;       // Cuántos puntos XP ganas al derrotarlo
-  defeated: boolean;       // true = ya lo venciste; false = aún no
+  id: number;
+  session_id: number;
+  name: string;
+  description: string;
+  icon: string;
+  difficulty: number;          // 1-5
+  status: BossStatus;
+  xp_reward: number;
+  created_at: string;
+  defeated_at: string | null;
+  requirements: BossRequirement[];
+  rewards: BossReward[];
+}
+
+export interface BossRequirement {
+  id: number;
+  boss_id: number;
+  requirement_type: RequirementType;
+  description: string;
+  target_value: number;
+  current_value: number;
+  completed: boolean;
+}
+
+export interface BossReward {
+  id: number;
+  boss_id: number;
+  reward_type: RewardType;
+  value: string;
+  description: string;
+  claimed: boolean;
+}
+
+export interface CreateBossPayload {
+  session_id: number;
+  name: string;
+  description?: string;
+  icon?: string;
+  difficulty?: number;
+  xp_reward?: number;
+  requirements: CreateRequirementPayload[];
+  rewards: CreateRewardPayload[];
+}
+
+export interface CreateRequirementPayload {
+  requirement_type: RequirementType;
+  description: string;
+  target_value: number;
+}
+
+export interface CreateRewardPayload {
+  reward_type: RewardType;
+  value: string;
+  description: string;
 }

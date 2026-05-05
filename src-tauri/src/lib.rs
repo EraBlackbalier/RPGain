@@ -129,6 +129,69 @@ pub struct Session {
     pub created_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Boss {
+    pub id: i64,
+    pub session_id: i64,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub difficulty: i64,
+    pub status: String,
+    pub xp_reward: i64,
+    pub created_at: String,
+    pub defeated_at: Option<String>,
+    pub requirements: Vec<BossRequirement>,
+    pub rewards: Vec<BossReward>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BossRequirement {
+    pub id: i64,
+    pub boss_id: i64,
+    pub requirement_type: String,
+    pub description: String,
+    pub target_value: i64,
+    pub current_value: i64,
+    pub completed: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BossReward {
+    pub id: i64,
+    pub boss_id: i64,
+    pub reward_type: String,
+    pub value: String,
+    pub description: String,
+    pub claimed: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateBossPayload {
+    pub session_id: i64,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub difficulty: i64,
+    pub xp_reward: i64,
+    pub requirements: Vec<CreateRequirementPayload>,
+    pub rewards: Vec<CreateRewardPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateRequirementPayload {
+    pub requirement_type: String,
+    pub description: String,
+    pub target_value: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateRewardPayload {
+    pub reward_type: String,
+    pub value: String,
+    pub description: String,
+}
+
 // --- Helpers ---
 
 fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
@@ -739,6 +802,273 @@ fn get_active_session(db: State<Database>) -> Result<Option<Session>, String> {
     Ok(session)
 }
 
+// --- Boss Commands ---
+
+fn fetch_boss_full(conn: &rusqlite::Connection, boss_id: i64) -> Result<Boss, String> {
+    let mut stmt = conn.prepare(
+        "SELECT id, session_id, name, description, icon, difficulty, status, xp_reward, created_at, defeated_at FROM bosses WHERE id = ?1"
+    ).map_err(|e| e.to_string())?;
+    let mut boss = stmt.query_row(params![boss_id], |row| {
+        Ok(Boss {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            name: row.get(2)?,
+            description: row.get(3)?,
+            icon: row.get(4)?,
+            difficulty: row.get(5)?,
+            status: row.get(6)?,
+            xp_reward: row.get(7)?,
+            created_at: row.get(8)?,
+            defeated_at: row.get(9)?,
+            requirements: Vec::new(),
+            rewards: Vec::new(),
+        })
+    }).map_err(|e| format!("Boss not found: {}", e))?;
+
+    let mut req_stmt = conn.prepare(
+        "SELECT id, boss_id, requirement_type, description, target_value, current_value, completed FROM boss_requirements WHERE boss_id = ?1 ORDER BY id ASC"
+    ).map_err(|e| e.to_string())?;
+    boss.requirements = req_stmt.query_map(params![boss_id], |row| {
+        Ok(BossRequirement {
+            id: row.get(0)?,
+            boss_id: row.get(1)?,
+            requirement_type: row.get(2)?,
+            description: row.get(3)?,
+            target_value: row.get(4)?,
+            current_value: row.get(5)?,
+            completed: row.get::<_, i64>(6)? != 0,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+    let mut rew_stmt = conn.prepare(
+        "SELECT id, boss_id, reward_type, value, description, claimed FROM boss_rewards WHERE boss_id = ?1 ORDER BY id ASC"
+    ).map_err(|e| e.to_string())?;
+    boss.rewards = rew_stmt.query_map(params![boss_id], |row| {
+        Ok(BossReward {
+            id: row.get(0)?,
+            boss_id: row.get(1)?,
+            reward_type: row.get(2)?,
+            value: row.get(3)?,
+            description: row.get(4)?,
+            claimed: row.get::<_, i64>(5)? != 0,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+    Ok(boss)
+}
+
+#[tauri::command]
+fn get_bosses(db: State<Database>, session_id: i64) -> Result<Vec<Boss>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id FROM bosses WHERE session_id = ?1 ORDER BY id ASC"
+    ).map_err(|e| e.to_string())?;
+    let ids: Vec<i64> = stmt.query_map(params![session_id], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    let mut bosses = Vec::new();
+    for id in ids {
+        bosses.push(fetch_boss_full(&conn, id)?);
+    }
+    Ok(bosses)
+}
+
+#[tauri::command]
+fn create_boss(db: State<Database>, payload: CreateBossPayload) -> Result<Boss, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Local::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO bosses (session_id, name, description, icon, difficulty, status, xp_reward, created_at) VALUES (?1, ?2, ?3, ?4, ?5, 'available', ?6, ?7)",
+        params![payload.session_id, payload.name, payload.description, payload.icon, payload.difficulty, payload.xp_reward, now],
+    ).map_err(|e| e.to_string())?;
+    let boss_id = conn.last_insert_rowid();
+
+    for req in &payload.requirements {
+        conn.execute(
+            "INSERT INTO boss_requirements (boss_id, requirement_type, description, target_value) VALUES (?1, ?2, ?3, ?4)",
+            params![boss_id, req.requirement_type, req.description, req.target_value],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    for rew in &payload.rewards {
+        conn.execute(
+            "INSERT INTO boss_rewards (boss_id, reward_type, value, description) VALUES (?1, ?2, ?3, ?4)",
+            params![boss_id, rew.reward_type, rew.value, rew.description],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    fetch_boss_full(&conn, boss_id)
+}
+
+#[tauri::command]
+fn delete_boss(db: State<Database>, boss_id: i64) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM boss_rewards WHERE boss_id = ?1", params![boss_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM boss_requirements WHERE boss_id = ?1", params![boss_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM bosses WHERE id = ?1", params![boss_id]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn update_boss_requirement(db: State<Database>, requirement_id: i64, current_value: i64) -> Result<Boss, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    // Get the requirement's target and boss_id
+    let (boss_id, target_value): (i64, i64) = conn.query_row(
+        "SELECT boss_id, target_value FROM boss_requirements WHERE id = ?1",
+        params![requirement_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).map_err(|e| format!("Requirement not found: {}", e))?;
+
+    let clamped = current_value.min(target_value);
+    let completed = if clamped >= target_value { 1 } else { 0 };
+    conn.execute(
+        "UPDATE boss_requirements SET current_value = ?1, completed = ?2 WHERE id = ?3",
+        params![clamped, completed, requirement_id],
+    ).map_err(|e| e.to_string())?;
+
+    // Check if all requirements for this boss are completed
+    let pending: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM boss_requirements WHERE boss_id = ?1 AND completed = 0",
+        params![boss_id],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+
+    if pending == 0 {
+        // All requirements met — check current status
+        let status: String = conn.query_row(
+            "SELECT status FROM bosses WHERE id = ?1", params![boss_id], |row| row.get(0),
+        ).map_err(|e| e.to_string())?;
+        if status != "defeated" {
+            conn.execute(
+                "UPDATE bosses SET status = 'in_progress' WHERE id = ?1 AND status != 'defeated'",
+                params![boss_id],
+            ).map_err(|e| e.to_string())?;
+        }
+    }
+
+    fetch_boss_full(&conn, boss_id)
+}
+
+#[tauri::command]
+fn defeat_boss(db: State<Database>, boss_id: i64, session_id: i64) -> Result<Boss, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    // Verify all requirements are completed
+    let pending: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM boss_requirements WHERE boss_id = ?1 AND completed = 0",
+        params![boss_id],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+
+    if pending > 0 {
+        return Err(format!("Boss has {} unmet requirements", pending));
+    }
+
+    let now = chrono::Local::now().to_rfc3339();
+
+    // Mark boss as defeated
+    conn.execute(
+        "UPDATE bosses SET status = 'defeated', defeated_at = ?1 WHERE id = ?2",
+        params![now, boss_id],
+    ).map_err(|e| e.to_string())?;
+
+    // Claim all rewards
+    conn.execute(
+        "UPDATE boss_rewards SET claimed = 1 WHERE boss_id = ?1",
+        params![boss_id],
+    ).map_err(|e| e.to_string())?;
+
+    // Grant XP reward
+    let xp_reward: i64 = conn.query_row(
+        "SELECT xp_reward FROM bosses WHERE id = ?1", params![boss_id], |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+
+    let boss_name: String = conn.query_row(
+        "SELECT name FROM bosses WHERE id = ?1", params![boss_id], |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT INTO xp_logs (session_id, task_id, task_type, action, xp_amount, created_at) VALUES (?1, 0, 'boss', ?2, ?3, ?4)",
+        params![session_id, format!("Defeated boss: {}", boss_name), xp_reward, now],
+    ).map_err(|e| e.to_string())?;
+
+    fetch_boss_full(&conn, boss_id)
+}
+
+#[tauri::command]
+fn check_boss_requirements(db: State<Database>, boss_id: i64, session_id: i64) -> Result<Boss, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    // Auto-evaluate requirements based on actual session data
+    let mut req_stmt = conn.prepare(
+        "SELECT id, requirement_type, target_value FROM boss_requirements WHERE boss_id = ?1"
+    ).map_err(|e| e.to_string())?;
+    let reqs: Vec<(i64, String, i64)> = req_stmt.query_map(params![boss_id], |row| {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+    for (req_id, req_type, target) in &reqs {
+        let current: i64 = match req_type.as_str() {
+            "tasks_completed" => {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM tasks WHERE session_id = ?1 AND completed = 1",
+                    params![session_id], |row| row.get(0),
+                ).unwrap_or(0)
+            }
+            "xp_earned" => {
+                conn.query_row(
+                    "SELECT COALESCE(SUM(xp_amount), 0) FROM xp_logs WHERE session_id = ?1",
+                    params![session_id], |row| row.get(0),
+                ).unwrap_or(0)
+            }
+            "level_reached" => {
+                let total_xp: i64 = conn.query_row(
+                    "SELECT COALESCE(SUM(xp_amount), 0) FROM xp_logs WHERE session_id = ?1",
+                    params![session_id], |row| row.get(0),
+                ).unwrap_or(0);
+                total_xp / 100 + 1
+            }
+            "skill_unlocked" => {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM skill_nodes sn JOIN skill_trees st ON st.id = sn.tree_id WHERE st.session_id = ?1 AND sn.unlocked = 1",
+                    params![session_id], |row| row.get(0),
+                ).unwrap_or(0)
+            }
+            _ => 0,
+        };
+        let clamped = current.min(*target);
+        let completed = if clamped >= *target { 1 } else { 0 };
+        conn.execute(
+            "UPDATE boss_requirements SET current_value = ?1, completed = ?2 WHERE id = ?3",
+            params![clamped, completed, req_id],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Update boss status based on requirements
+    let pending: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM boss_requirements WHERE boss_id = ?1 AND completed = 0",
+        params![boss_id], |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+
+    let status: String = conn.query_row(
+        "SELECT status FROM bosses WHERE id = ?1", params![boss_id], |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+
+    if status != "defeated" {
+        let new_status = if pending == 0 { "in_progress" } else { "available" };
+        conn.execute(
+            "UPDATE bosses SET status = ?1 WHERE id = ?2",
+            params![new_status, boss_id],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    fetch_boss_full(&conn, boss_id)
+}
+
 // --- Import / Export ---
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -950,6 +1280,12 @@ pub fn run() {
             create_session,
             set_active_session,
             get_active_session,
+            get_bosses,
+            create_boss,
+            delete_boss,
+            update_boss_requirement,
+            defeat_boss,
+            check_boss_requirements,
             export_session_data,
             import_session_data,
         ])

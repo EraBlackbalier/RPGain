@@ -1,7 +1,7 @@
 use rusqlite::{Connection, Result, params};
 use std::sync::Mutex;
 
-const CURRENT_DB_VERSION: i64 = 6;
+const CURRENT_DB_VERSION: i64 = 7;
 
 pub struct Database {
     pub conn: Mutex<Connection>,
@@ -237,6 +237,52 @@ impl Database {
             if !has_tree_session {
                 conn.execute_batch("ALTER TABLE skill_trees ADD COLUMN session_id INTEGER NOT NULL DEFAULT 1;")?;
             }
+        }
+
+        if version < 7 {
+            // Drop the old simple bosses table from v1 and recreate with full schema
+            conn.execute_batch(
+                "DROP TABLE IF EXISTS bosses;
+
+                CREATE TABLE IF NOT EXISTS bosses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL DEFAULT 1,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    icon TEXT NOT NULL DEFAULT 'skull',
+                    difficulty INTEGER NOT NULL DEFAULT 1,
+                    status TEXT NOT NULL DEFAULT 'available',
+                    xp_reward INTEGER NOT NULL DEFAULT 100,
+                    created_at TEXT NOT NULL,
+                    defeated_at TEXT,
+                    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS boss_requirements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    boss_id INTEGER NOT NULL,
+                    requirement_type TEXT NOT NULL DEFAULT 'tasks_completed',
+                    description TEXT NOT NULL DEFAULT '',
+                    target_value INTEGER NOT NULL DEFAULT 1,
+                    current_value INTEGER NOT NULL DEFAULT 0,
+                    completed INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (boss_id) REFERENCES bosses(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS boss_rewards (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    boss_id INTEGER NOT NULL,
+                    reward_type TEXT NOT NULL DEFAULT 'xp',
+                    value TEXT NOT NULL DEFAULT '',
+                    description TEXT NOT NULL DEFAULT '',
+                    claimed INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (boss_id) REFERENCES bosses(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_bosses_session ON bosses(session_id);
+                CREATE INDEX IF NOT EXISTS idx_boss_req_boss ON boss_requirements(boss_id);
+                CREATE INDEX IF NOT EXISTS idx_boss_rew_boss ON boss_rewards(boss_id);"
+            )?;
         }
 
         Self::set_db_version(&conn, CURRENT_DB_VERSION)?;
