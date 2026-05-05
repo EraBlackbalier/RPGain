@@ -18,6 +18,7 @@ import { computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useXpStore } from "../stores/xpStore";
 import { useTaskStore } from "../stores/taskStore";
+import { useSessionStore } from "../stores/sessionStore";
 import PixelIcon from "./PixelIcon.vue";
 import ThemeSwitcher from "./ThemeSwitcher.vue";
 import { playClick, playHover } from "../composables/usePixelSound";
@@ -29,6 +30,15 @@ const route = useRoute();
 // Stores de Pinia: accedemos a datos globales sin tener que pasar props entre componentes.
 const xpStore = useXpStore();
 const taskStore = useTaskStore();
+const sessionStore = useSessionStore();
+
+// ── SESIÓN ACTIVA ──
+// Muestra el nombre del personaje y sesión activa en la barra superior.
+const sessionLabel = computed(() => {
+  const char = sessionStore.characterName;
+  const sess = sessionStore.sessionName;
+  return `${char} — ${sess}`;
+});
 
 // ── NAVEGACIÓN ──
 // Array con los items del menú: cada uno tiene la ruta (URL), etiqueta y nombre del icono.
@@ -77,6 +87,8 @@ function badgeFor(path: string): string | null {
   }
   return null; // Para otras rutas, no hay badge
 }
+
+// Session label display only (selection happens on SplashScreen)
 </script>
 
 <template>
@@ -95,6 +107,11 @@ function badgeFor(path: string): string | null {
       </div>
       <!-- Título de la app en fuente pixel-art. -->
       <h1 class="app-title">RPGain</h1>
+      <!-- Etiqueta de sesión activa (solo lectura, selección en SplashScreen) -->
+      <div class="session-badge">
+        <PixelIcon name="user" :size="12" color="var(--info)" />
+        <span class="session-label">{{ sessionLabel }}</span>
+      </div>
     </div>
 
     <!-- ── NAVEGACIÓN CENTRAL ── -->
@@ -137,6 +154,7 @@ function badgeFor(path: string): string | null {
       <!-- ThemeSwitcher: componente para cambiar entre los 10 temas de color. -->
       <ThemeSwitcher />
     </div>
+
   </header>
 </template>
 
@@ -287,5 +305,23 @@ function badgeFor(path: string): string | null {
   color: var(--text-muted, #94a3b8);
   letter-spacing: 0.04em;
   white-space: nowrap;       /* "LVL 5" no se parte en dos líneas */
+}
+
+/* ── SESSION BADGE ── */
+.session-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.6rem;
+  padding: 0.15rem 0.4rem;
+  border: 2px solid var(--border-color, #312e81);
+  background: var(--bg-deep, #0a0a12);
+  font-size: 0.75rem;
+  color: var(--info, #00f0ff);
+}
+.session-label {
+  white-space: nowrap;
+  font-family: "Press Start 2P", cursive;
+  font-size: 0.35rem;
 }
 </style>

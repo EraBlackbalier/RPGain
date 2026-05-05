@@ -16,6 +16,9 @@ import type { SkillTree, CreateSkillNodePayload } from "../models/Skill";
 // Importamos el servicio que habla con el backend (Rust/Tauri).
 import * as tauriService from "../services/tauriService";
 
+// Importamos el store de sesiones para saber cuál está activa.
+import { useSessionStore } from "./sessionStore";
+
 // ── CREACIÓN DEL STORE ──
 export const useSkillStore = defineStore("skills", () => {
   // ── ESTADO REACTIVO ──
@@ -80,7 +83,9 @@ export const useSkillStore = defineStore("skills", () => {
     loading.value = true;
     error.value = null;
     try {
-      trees.value = await tauriService.getSkillTrees();
+      const sessionStore = useSessionStore();
+      const sessionId = sessionStore.activeSessionId ?? 1;
+      trees.value = await tauriService.getSkillTrees(sessionId);
     } catch (e) {
       error.value = String(e);
       console.error("Error fetching skill trees:", e);
@@ -99,7 +104,9 @@ export const useSkillStore = defineStore("skills", () => {
   async function addTree(taskType: string, icon: string, color: string) {
     error.value = null;
     try {
-      const tree = await tauriService.createSkillTree(taskType, icon, color);
+      const sessionStore = useSessionStore();
+      const sessionId = sessionStore.activeSessionId ?? 1;
+      const tree = await tauriService.createSkillTree(sessionId, taskType, icon, color);
       trees.value.push(tree);
       return tree;
     } catch (e) {

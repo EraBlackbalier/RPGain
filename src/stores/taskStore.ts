@@ -26,6 +26,7 @@ import * as tauriService from "../services/tauriService";
 // Importamos el store de XP para refrescar los datos de XP
 // cuando una tarea se completa o progresa (ganas XP).
 import { useXpStore } from "./xpStore";
+import { useSessionStore } from "./sessionStore";
 
 // ── CREACIÓN DEL STORE ──
 export const useTaskStore = defineStore("tasks", () => {
@@ -135,7 +136,9 @@ export const useTaskStore = defineStore("tasks", () => {
     loading.value = true;
     error.value = null;
     try {
-      tasks.value = await tauriService.getTasks();
+      const sessionStore = useSessionStore();
+      const sessionId = sessionStore.activeSessionId ?? 1;
+      tasks.value = await tauriService.getTasks(sessionId);
     } catch (e) {
       error.value = String(e);
       console.error("Error fetching tasks:", e);
@@ -152,6 +155,8 @@ export const useTaskStore = defineStore("tasks", () => {
   async function addTask(payload: CreateTaskPayload) {
     error.value = null;
     try {
+      const sessionStore = useSessionStore();
+      payload.session_id = sessionStore.activeSessionId ?? 1;
       const newTask = await tauriService.createTask(payload);
       tasks.value.unshift(newTask); // `unshift` agrega al INICIO del array
       return newTask;

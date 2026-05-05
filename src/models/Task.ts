@@ -31,6 +31,7 @@ export type TaskKind = "finite" | "endless";
 
 export interface Task {
   id: number;                    // Identificador único numérico (1, 2, 3...)
+  session_id: number;          // ID de la sesión a la que pertenece esta tarea
   title: string;                 // Título de la misión (ej: "Leer libro")
   description: string;           // Descripción detallada opcional
   types: string[];                 // Array de etiquetas/categorías (ej: ["estudio", "lectura"])
@@ -51,6 +52,7 @@ export interface Task {
 // Las "?" significan que esos campos son OPCIONALES.
 
 export interface CreateTaskPayload {
+  session_id?: number;          // ID de la sesión (el store lo asigna automáticamente)
   title: string;                 // OBLIGATORIO: toda tarea necesita nombre
   description?: string;          // Opcional: detalles extra
   types?: string[];              // Opcional: etiquetas/categorías

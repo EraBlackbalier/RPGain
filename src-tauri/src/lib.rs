@@ -3,13 +3,14 @@ mod db;
 use db::Database;
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 
 // --- Models ---
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Task {
     pub id: i64,
+    pub session_id: i64,
     pub title: String,
     pub description: String,
     pub types: Vec<String>,
@@ -26,6 +27,7 @@ pub struct Task {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTaskPayload {
+    pub session_id: i64,
     pub title: String,
     pub description: String,
     pub types: Vec<String>,
@@ -74,6 +76,7 @@ pub struct XPByType {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SkillTree {
     pub id: i64,
+    pub session_id: i64,
     pub task_type: String,
     pub icon: String,
     pub color: String,
@@ -108,30 +111,48 @@ pub struct CreateSkillNodePayload {
     pub parent_id: Option<i64>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Character {
+    pub id: i64,
+    pub name: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Session {
+    pub id: i64,
+    pub character_id: i64,
+    pub character_name: String,
+    pub name: String,
+    pub is_active: bool,
+    pub created_at: String,
+}
+
 // --- Helpers ---
 
 fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
-    let types_json: String = row.get(3)?;
+    let types_json: String = row.get(4)?;
     let types: Vec<String> = serde_json::from_str(&types_json).unwrap_or_default();
     Ok(Task {
         id: row.get(0)?,
-        title: row.get(1)?,
-        description: row.get(2)?,
+        session_id: row.get(1)?,
+        title: row.get(2)?,
+        description: row.get(3)?,
         types,
-        priority: row.get(4)?,
-        task_kind: row.get(5)?,
-        xp_reward: row.get(6)?,
-        progress: row.get(7)?,
-        progress_total: row.get(8)?,
-        completed: row.get::<_, i64>(9)? != 0,
-        iteration_count: row.get(10)?,
-        created_at: row.get(11)?,
-        completed_at: row.get(12)?,
+        priority: row.get(5)?,
+        task_kind: row.get(6)?,
+        xp_reward: row.get(7)?,
+        progress: row.get(8)?,
+        progress_total: row.get(9)?,
+        completed: row.get::<_, i64>(10)? != 0,
+        iteration_count: row.get(11)?,
+        created_at: row.get(12)?,
+        completed_at: row.get(13)?,
     })
 }
 
 const TASK_SELECT: &str =
-    "SELECT id, title, description, types, priority, task_kind, xp_reward, progress, progress_total, completed, iteration_count, created_at, completed_at FROM tasks";
+    "SELECT id, session_id, title, description, types, priority, task_kind, xp_reward, progress, progress_total, completed, iteration_count, created_at, completed_at FROM tasks";
 
 fn fetch_task_by_id(conn: &rusqlite::Connection, task_id: i64) -> Result<Task, String> {
     let sql = format!("{} WHERE id = ?1", TASK_SELECT);
@@ -139,7 +160,7 @@ fn fetch_task_by_id(conn: &rusqlite::Connection, task_id: i64) -> Result<Task, S
         .map_err(|e| format!("Task not found: {}", e))
 }
 
-fn log_xp(conn: &rusqlite::Connection, task_id: i64, task_types: &[String], action: &str, xp_amount: i64) -> Result<(), String> {
+fn log_xp(conn: &rusqlite::Connection, session_id: i64, task_id: i64, task_types: &[String], action: &str, xp_amount: i64) -> Result<(), String> {
     let now = chrono::Local::now().to_rfc3339();
     let types = if task_types.is_empty() {
         vec!["general".to_string()]
@@ -148,8 +169,8 @@ fn log_xp(conn: &rusqlite::Connection, task_id: i64, task_types: &[String], acti
     };
     for t in &types {
         conn.execute(
-            "INSERT INTO xp_logs (task_id, task_type, action, xp_amount, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![task_id, t, action, xp_amount, now],
+            "INSERT INTO xp_logs (session_id, task_id, task_type, action, xp_amount, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![session_id, task_id, t, action, xp_amount, now],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -164,13 +185,13 @@ fn health_check() -> String {
 }
 
 #[tauri::command]
-fn get_tasks(db: State<Database>) -> Result<Vec<Task>, String> {
+fn get_tasks(db: State<Database>, session_id: i64) -> Result<Vec<Task>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    let sql = format!("{} ORDER BY completed ASC, created_at DESC", TASK_SELECT);
+    let sql = format!("{} WHERE session_id = ?1 ORDER BY completed ASC, created_at DESC", TASK_SELECT);
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
     let tasks = stmt
-        .query_map([], row_to_task)
+        .query_map(params![session_id], row_to_task)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -185,8 +206,9 @@ fn create_task(db: State<Database>, payload: CreateTaskPayload) -> Result<Task, 
     let types_json = serde_json::to_string(&payload.types).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO tasks (title, description, types, priority, task_kind, xp_reward, progress_total, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO tasks (session_id, title, description, types, priority, task_kind, xp_reward, progress_total, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
+            payload.session_id,
             payload.title,
             payload.description,
             types_json,
@@ -266,7 +288,7 @@ fn update_progress(db: State<Database>, task_id: i64, progress: i64) -> Result<T
         .map_err(|e| e.to_string())?;
         if steps_done > 0 {
             let xp = (task.xp_reward as f64 * steps_done as f64 / task.progress_total as f64).round() as i64;
-            log_xp(&conn, task_id, &task.types, "progress_complete", xp.max(1))?;
+            log_xp(&conn, task.session_id, task_id, &task.types, "progress_complete", xp.max(1))?;
         }
     } else if steps_done > 0 {
         conn.execute(
@@ -275,7 +297,7 @@ fn update_progress(db: State<Database>, task_id: i64, progress: i64) -> Result<T
         )
         .map_err(|e| e.to_string())?;
         let xp = (task.xp_reward as f64 * steps_done as f64 / task.progress_total as f64).round() as i64;
-        log_xp(&conn, task_id, &task.types, "progress", xp.max(1))?;
+        log_xp(&conn, task.session_id, task_id, &task.types, "progress", xp.max(1))?;
     } else {
         conn.execute(
             "UPDATE tasks SET progress = ?1 WHERE id = ?2",
@@ -299,14 +321,14 @@ fn complete_task(db: State<Database>, task_id: i64) -> Result<Task, String> {
             params![task_id],
         )
         .map_err(|e| e.to_string())?;
-        log_xp(&conn, task_id, &task.types, "iteration", task.xp_reward)?;
+        log_xp(&conn, task.session_id, task_id, &task.types, "iteration", task.xp_reward)?;
     } else {
         conn.execute(
             "UPDATE tasks SET completed = 1, progress = progress_total, completed_at = ?1 WHERE id = ?2",
             params![now, task_id],
         )
         .map_err(|e| e.to_string())?;
-        log_xp(&conn, task_id, &task.types, "complete", task.xp_reward)?;
+        log_xp(&conn, task.session_id, task_id, &task.types, "complete", task.xp_reward)?;
     }
 
     fetch_task_by_id(&conn, task_id)
@@ -321,37 +343,37 @@ fn delete_task(db: State<Database>, task_id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_stats(db: State<Database>) -> Result<Stats, String> {
+fn get_stats(db: State<Database>, session_id: i64) -> Result<Stats, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     let tasks_total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM tasks", [], |row| row.get(0))
+        .query_row("SELECT COUNT(*) FROM tasks WHERE session_id = ?1", params![session_id], |row| row.get(0))
         .map_err(|e| e.to_string())?;
 
     let tasks_completed: i64 = conn
-        .query_row("SELECT COUNT(*) FROM tasks WHERE completed = 1", [], |row| row.get(0))
+        .query_row("SELECT COUNT(*) FROM tasks WHERE completed = 1 AND session_id = ?1", params![session_id], |row| row.get(0))
         .map_err(|e| e.to_string())?;
 
     let total_xp: i64 = conn
         .query_row(
-            "SELECT COALESCE(SUM(xp_reward), 0) FROM tasks WHERE completed = 1",
-            [],
+            "SELECT COALESCE(SUM(xp_reward), 0) FROM tasks WHERE completed = 1 AND session_id = ?1",
+            params![session_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
 
     let endless_iterations: i64 = conn
         .query_row(
-            "SELECT COALESCE(SUM(iteration_count), 0) FROM tasks WHERE task_kind = 'endless'",
-            [],
+            "SELECT COALESCE(SUM(iteration_count), 0) FROM tasks WHERE task_kind = 'endless' AND session_id = ?1",
+            params![session_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
 
     let endless_xp: i64 = conn
         .query_row(
-            "SELECT COALESCE(SUM(xp_reward * iteration_count), 0) FROM tasks WHERE task_kind = 'endless'",
-            [],
+            "SELECT COALESCE(SUM(xp_reward * iteration_count), 0) FROM tasks WHERE task_kind = 'endless' AND session_id = ?1",
+            params![session_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -365,15 +387,15 @@ fn get_stats(db: State<Database>) -> Result<Stats, String> {
 }
 
 #[tauri::command]
-fn get_xp_logs(db: State<Database>, limit: Option<i64>) -> Result<Vec<XPLog>, String> {
+fn get_xp_logs(db: State<Database>, session_id: i64, limit: Option<i64>) -> Result<Vec<XPLog>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let lim = limit.unwrap_or(100);
     let mut stmt = conn
-        .prepare("SELECT id, task_id, task_type, action, xp_amount, created_at FROM xp_logs ORDER BY created_at DESC LIMIT ?1")
+        .prepare("SELECT id, task_id, task_type, action, xp_amount, created_at FROM xp_logs WHERE session_id = ?1 ORDER BY created_at DESC LIMIT ?2")
         .map_err(|e| e.to_string())?;
 
     let logs = stmt
-        .query_map(params![lim], |row| {
+        .query_map(params![session_id, lim], |row| {
             Ok(XPLog {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
@@ -391,14 +413,14 @@ fn get_xp_logs(db: State<Database>, limit: Option<i64>) -> Result<Vec<XPLog>, St
 }
 
 #[tauri::command]
-fn get_xp_by_type(db: State<Database>) -> Result<Vec<XPByType>, String> {
+fn get_xp_by_type(db: State<Database>, session_id: i64) -> Result<Vec<XPByType>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT task_type, COALESCE(SUM(xp_amount), 0), COUNT(*) FROM xp_logs GROUP BY task_type ORDER BY SUM(xp_amount) DESC")
+        .prepare("SELECT task_type, COALESCE(SUM(xp_amount), 0), COUNT(*) FROM xp_logs WHERE session_id = ?1 GROUP BY task_type ORDER BY SUM(xp_amount) DESC")
         .map_err(|e| e.to_string())?;
 
     let results = stmt
-        .query_map([], |row| {
+        .query_map(params![session_id], |row| {
             Ok(XPByType {
                 task_type: row.get(0)?,
                 total_xp: row.get(1)?,
@@ -413,10 +435,10 @@ fn get_xp_by_type(db: State<Database>) -> Result<Vec<XPByType>, String> {
 }
 
 #[tauri::command]
-fn get_total_logged_xp(db: State<Database>) -> Result<i64, String> {
+fn get_total_logged_xp(db: State<Database>, session_id: i64) -> Result<i64, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let total: i64 = conn
-        .query_row("SELECT COALESCE(SUM(xp_amount), 0) FROM xp_logs", [], |row| row.get(0))
+        .query_row("SELECT COALESCE(SUM(xp_amount), 0) FROM xp_logs WHERE session_id = ?1", params![session_id], |row| row.get(0))
         .map_err(|e| e.to_string())?;
     Ok(total)
 }
@@ -466,12 +488,13 @@ fn fetch_nodes_for_tree(conn: &rusqlite::Connection, tree_id: i64) -> Result<Vec
     Ok(nodes)
 }
 
-fn build_skill_tree(conn: &rusqlite::Connection, id: i64, task_type: &str, icon: &str, color: &str, created_at: &str) -> Result<SkillTree, String> {
+fn build_skill_tree(conn: &rusqlite::Connection, id: i64, session_id: i64, task_type: &str, icon: &str, color: &str, created_at: &str) -> Result<SkillTree, String> {
     let nodes = fetch_nodes_for_tree(conn, id)?;
     let available_xp = get_xp_for_type(conn, task_type)?;
     let spent_xp = get_spent_xp_for_tree(conn, id)?;
     Ok(SkillTree {
         id,
+        session_id,
         task_type: task_type.to_string(),
         icon: icon.to_string(),
         color: color.to_string(),
@@ -485,35 +508,35 @@ fn build_skill_tree(conn: &rusqlite::Connection, id: i64, task_type: &str, icon:
 // --- Skill Tree commands ---
 
 #[tauri::command]
-fn get_skill_trees(db: State<Database>) -> Result<Vec<SkillTree>, String> {
+fn get_skill_trees(db: State<Database>, session_id: i64) -> Result<Vec<SkillTree>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, task_type, icon, color, created_at FROM skill_trees ORDER BY task_type ASC")
+        .prepare("SELECT id, task_type, icon, color, created_at FROM skill_trees WHERE session_id = ?1 ORDER BY task_type ASC")
         .map_err(|e| e.to_string())?;
     let rows: Vec<(i64, String, String, String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)))
+        .query_map(params![session_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)))
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
     let mut trees = Vec::new();
     for (id, task_type, icon, color, created_at) in rows {
-        trees.push(build_skill_tree(&conn, id, &task_type, &icon, &color, &created_at)?);
+        trees.push(build_skill_tree(&conn, id, session_id, &task_type, &icon, &color, &created_at)?);
     }
     Ok(trees)
 }
 
 #[tauri::command]
-fn create_skill_tree(db: State<Database>, task_type: String, icon: String, color: String) -> Result<SkillTree, String> {
+fn create_skill_tree(db: State<Database>, session_id: i64, task_type: String, icon: String, color: String) -> Result<SkillTree, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let now = chrono::Local::now().to_rfc3339();
     conn.execute(
-        "INSERT INTO skill_trees (task_type, icon, color, created_at) VALUES (?1, ?2, ?3, ?4)",
-        params![task_type, icon, color, now],
+        "INSERT INTO skill_trees (session_id, task_type, icon, color, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![session_id, task_type, icon, color, now],
     )
     .map_err(|e| format!("Tree already exists or error: {}", e))?;
     let id = conn.last_insert_rowid();
-    build_skill_tree(&conn, id, &task_type, &icon, &color, &now)
+    build_skill_tree(&conn, id, session_id, &task_type, &icon, &color, &now)
 }
 
 #[tauri::command]
@@ -596,17 +619,11 @@ fn unlock_skill_node(db: State<Database>, node_id: i64) -> Result<SkillTree, Str
     )
     .map_err(|e| e.to_string())?;
 
-    let tree_icon: String = conn
-        .query_row("SELECT icon FROM skill_trees WHERE id = ?1", params![node.tree_id], |row| row.get(0))
-        .map_err(|e| e.to_string())?;
-    let tree_color: String = conn
-        .query_row("SELECT color FROM skill_trees WHERE id = ?1", params![node.tree_id], |row| row.get(0))
-        .map_err(|e| e.to_string())?;
-    let tree_created: String = conn
-        .query_row("SELECT created_at FROM skill_trees WHERE id = ?1", params![node.tree_id], |row| row.get(0))
+    let (tree_icon, tree_color, tree_created, tree_session_id): (String, String, String, i64) = conn
+        .query_row("SELECT icon, color, created_at, session_id FROM skill_trees WHERE id = ?1", params![node.tree_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
         .map_err(|e| e.to_string())?;
 
-    build_skill_tree(&conn, node.tree_id, &tree_type, &tree_icon, &tree_color, &tree_created)
+    build_skill_tree(&conn, node.tree_id, tree_session_id, &tree_type, &tree_icon, &tree_color, &tree_created)
 }
 
 #[tauri::command]
@@ -617,6 +634,108 @@ fn delete_skill_tree(db: State<Database>, tree_id: i64) -> Result<(), String> {
     conn.execute("DELETE FROM skill_trees WHERE id = ?1", params![tree_id])
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// --- Character & Session commands ---
+
+#[tauri::command]
+fn get_characters(db: State<Database>) -> Result<Vec<Character>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id, name, created_at FROM characters ORDER BY id ASC").map_err(|e| e.to_string())?;
+    let chars = stmt
+        .query_map([], |row| Ok(Character { id: row.get(0)?, name: row.get(1)?, created_at: row.get(2)? }))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(chars)
+}
+
+#[tauri::command]
+fn create_character(db: State<Database>, name: String) -> Result<Character, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Local::now().to_rfc3339();
+    conn.execute("INSERT INTO characters (name, created_at) VALUES (?1, ?2)", params![name, now]).map_err(|e| e.to_string())?;
+    let id = conn.last_insert_rowid();
+    Ok(Character { id, name, created_at: now })
+}
+
+#[tauri::command]
+fn get_sessions(db: State<Database>, character_id: i64) -> Result<Vec<Session>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT s.id, s.character_id, c.name as character_name, s.name, s.is_active, s.created_at FROM sessions s JOIN characters c ON c.id = s.character_id WHERE s.character_id = ?1 ORDER BY s.id ASC")
+        .map_err(|e| e.to_string())?;
+    let sessions = stmt
+        .query_map(params![character_id], |row| Ok(Session {
+            id: row.get(0)?,
+            character_id: row.get(1)?,
+            character_name: row.get(2)?,
+            name: row.get(3)?,
+            is_active: row.get::<_, i64>(4)? != 0,
+            created_at: row.get(5)?,
+        }))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(sessions)
+}
+
+#[tauri::command]
+fn create_session(db: State<Database>, character_id: i64, name: String) -> Result<Session, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Local::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO sessions (character_id, name, is_active, created_at) VALUES (?1, ?2, 0, ?3)",
+        params![character_id, name, now],
+    ).map_err(|e| e.to_string())?;
+    let id = conn.last_insert_rowid();
+    let character_name: String = conn
+        .query_row("SELECT name FROM characters WHERE id = ?1", params![character_id], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    Ok(Session { id, character_id, character_name, name, is_active: false, created_at: now })
+}
+
+#[tauri::command]
+fn set_active_session(db: State<Database>, session_id: i64) -> Result<Session, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    // Desactivar todas las sesiones
+    conn.execute("UPDATE sessions SET is_active = 0", []).map_err(|e| e.to_string())?;
+    // Activar la elegida
+    conn.execute("UPDATE sessions SET is_active = 1 WHERE id = ?1", params![session_id]).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT s.id, s.character_id, c.name as character_name, s.name, s.is_active, s.created_at FROM sessions s JOIN characters c ON c.id = s.character_id WHERE s.id = ?1")
+        .map_err(|e| e.to_string())?;
+    let session = stmt
+        .query_row(params![session_id], |row| Ok(Session {
+            id: row.get(0)?,
+            character_id: row.get(1)?,
+            character_name: row.get(2)?,
+            name: row.get(3)?,
+            is_active: row.get::<_, i64>(4)? != 0,
+            created_at: row.get(5)?,
+        }))
+        .map_err(|e| e.to_string())?;
+    Ok(session)
+}
+
+#[tauri::command]
+fn get_active_session(db: State<Database>) -> Result<Option<Session>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT s.id, s.character_id, c.name as character_name, s.name, s.is_active, s.created_at FROM sessions s JOIN characters c ON c.id = s.character_id WHERE s.is_active = 1 LIMIT 1")
+        .map_err(|e| e.to_string())?;
+    let session = stmt
+        .query_row([], |row| Ok(Session {
+            id: row.get(0)?,
+            character_id: row.get(1)?,
+            character_name: row.get(2)?,
+            name: row.get(3)?,
+            is_active: row.get::<_, i64>(4)? != 0,
+            created_at: row.get(5)?,
+        }))
+        .optional()
+        .map_err(|e| e.to_string())?;
+    Ok(session)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -649,6 +768,12 @@ pub fn run() {
             create_skill_node,
             unlock_skill_node,
             delete_skill_tree,
+            get_characters,
+            create_character,
+            get_sessions,
+            create_session,
+            set_active_session,
+            get_active_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

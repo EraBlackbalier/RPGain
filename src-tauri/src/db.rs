@@ -1,7 +1,7 @@
 use rusqlite::{Connection, Result, params};
 use std::sync::Mutex;
 
-const CURRENT_DB_VERSION: i64 = 5;
+const CURRENT_DB_VERSION: i64 = 6;
 
 pub struct Database {
     pub conn: Mutex<Connection>,
@@ -170,6 +170,72 @@ impl Database {
                     "UPDATE skill_trees SET color = ?1 WHERE id = ?2 AND color = '#a855f7'",
                     params![color, id],
                 ).ok();
+            }
+        }
+
+        if version < 6 {
+            // Crear tablas de characters y sessions
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS characters (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL DEFAULT 'Hero',
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    character_id INTEGER NOT NULL DEFAULT 1,
+                    name TEXT NOT NULL DEFAULT 'Main',
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+                );"
+            )?;
+
+            // Insertar character y session por defecto si no existen
+            let char_count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM characters", [], |row| row.get(0))
+                .unwrap_or(0);
+            if char_count == 0 {
+                let now = chrono::Local::now().to_rfc3339();
+                conn.execute(
+                    "INSERT INTO characters (name, created_at) VALUES ('Hero', ?1)",
+                    params![now],
+                ).ok();
+                conn.execute(
+                    "INSERT INTO sessions (character_id, name, is_active, created_at) VALUES (1, 'Main', 1, ?1)",
+                    params![now],
+                ).ok();
+            }
+
+            // Agregar session_id a tasks (si no existe)
+            let has_task_session: bool = conn
+                .prepare("PRAGMA table_info(tasks)")?
+                .query_map([], |row| row.get::<_, String>(1))?
+                .filter_map(|r| r.ok())
+                .any(|name| name == "session_id");
+            if !has_task_session {
+                conn.execute_batch("ALTER TABLE tasks ADD COLUMN session_id INTEGER NOT NULL DEFAULT 1;")?;
+            }
+
+            // Agregar session_id a xp_logs
+            let has_xp_session: bool = conn
+                .prepare("PRAGMA table_info(xp_logs)")?
+                .query_map([], |row| row.get::<_, String>(1))?
+                .filter_map(|r| r.ok())
+                .any(|name| name == "session_id");
+            if !has_xp_session {
+                conn.execute_batch("ALTER TABLE xp_logs ADD COLUMN session_id INTEGER NOT NULL DEFAULT 1;")?;
+            }
+
+            // Agregar session_id a skill_trees
+            let has_tree_session: bool = conn
+                .prepare("PRAGMA table_info(skill_trees)")?
+                .query_map([], |row| row.get::<_, String>(1))?
+                .filter_map(|r| r.ok())
+                .any(|name| name == "session_id");
+            if !has_tree_session {
+                conn.execute_batch("ALTER TABLE skill_trees ADD COLUMN session_id INTEGER NOT NULL DEFAULT 1;")?;
             }
         }
 

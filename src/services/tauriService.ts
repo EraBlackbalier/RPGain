@@ -16,6 +16,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Task, CreateTaskPayload, UpdateTaskPayload } from "../models/Task";
 import type { XPLog, XPByType } from "../models/XP";
 import type { SkillTree, SkillNode, CreateSkillNodePayload } from "../models/Skill";
+import type { Character } from "../models/Character";
+import type { Session } from "../models/Session";
 
 // ── TAREAS (Tasks) ──
 
@@ -24,8 +26,8 @@ import type { SkillTree, SkillNode, CreateSkillNodePayload } from "../models/Ski
  * Llama al comando Rust `get_tasks`.
  * Devuelve un array de objetos Task.
  */
-export async function getTasks(): Promise<Task[]> {
-  return await invoke<Task[]>("get_tasks");
+export async function getTasks(sessionId: number): Promise<Task[]> {
+  return await invoke<Task[]>("get_tasks", { sessionId });
 }
 
 /**
@@ -87,13 +89,13 @@ export async function deleteTask(taskId: number): Promise<void> {
  * - endless_iterations: cuántas veces has completado tareas "endless".
  * Llama al comando Rust `get_stats`.
  */
-export async function getStats(): Promise<{
+export async function getStats(sessionId: number): Promise<{
   total_xp: number;
   tasks_completed: number;
   tasks_total: number;
   endless_iterations: number;
 }> {
-  return await invoke("get_stats");
+  return await invoke("get_stats", { sessionId });
 }
 
 // ── XP (Experiencia) ──
@@ -104,8 +106,8 @@ export async function getStats(): Promise<{
  * `limit` es opcional: si lo pasas, solo trae esa cantidad de registros.
  * Llama al comando Rust `get_xp_logs`.
  */
-export async function getXpLogs(limit?: number): Promise<XPLog[]> {
-  return await invoke<XPLog[]>("get_xp_logs", { limit: limit ?? null });
+export async function getXpLogs(sessionId: number, limit?: number): Promise<XPLog[]> {
+  return await invoke<XPLog[]>("get_xp_logs", { sessionId, limit: limit ?? null });
 }
 
 /**
@@ -114,8 +116,8 @@ export async function getXpLogs(limit?: number): Promise<XPLog[]> {
  * Devuelve algo como: [{ task_type: "coding", total_xp: 150, log_count: 5 }, ...]
  * Llama al comando Rust `get_xp_by_type`.
  */
-export async function getXpByType(): Promise<XPByType[]> {
-  return await invoke<XPByType[]>("get_xp_by_type");
+export async function getXpByType(sessionId: number): Promise<XPByType[]> {
+  return await invoke<XPByType[]>("get_xp_by_type", { sessionId });
 }
 
 /**
@@ -123,8 +125,8 @@ export async function getXpByType(): Promise<XPByType[]> {
  * Es un solo número (ej: 1250).
  * Llama al comando Rust `get_total_logged_xp`.
  */
-export async function getTotalLoggedXp(): Promise<number> {
-  return await invoke<number>("get_total_logged_xp");
+export async function getTotalLoggedXp(sessionId: number): Promise<number> {
+  return await invoke<number>("get_total_logged_xp", { sessionId });
 }
 
 // ── SKILL TREES (Árboles de Habilidades) ──
@@ -134,8 +136,8 @@ export async function getTotalLoggedXp(): Promise<number> {
  * Cada árbol incluye su categoría, XP disponible, gastada, y lista de nodos.
  * Llama al comando Rust `get_skill_trees`.
  */
-export async function getSkillTrees(): Promise<SkillTree[]> {
-  return await invoke<SkillTree[]>("get_skill_trees");
+export async function getSkillTrees(sessionId: number): Promise<SkillTree[]> {
+  return await invoke<SkillTree[]>("get_skill_trees", { sessionId });
 }
 
 /**
@@ -145,8 +147,8 @@ export async function getSkillTrees(): Promise<SkillTree[]> {
  * `color`: color HEX del árbol (ej: "#a855f7").
  * Llama al comando Rust `create_skill_tree`.
  */
-export async function createSkillTree(taskType: string, icon: string, color: string): Promise<SkillTree> {
-  return await invoke<SkillTree>("create_skill_tree", { taskType, icon, color });
+export async function createSkillTree(sessionId: number, taskType: string, icon: string, color: string): Promise<SkillTree> {
+  return await invoke<SkillTree>("create_skill_tree", { sessionId, taskType, icon, color });
 }
 
 /**
@@ -176,6 +178,32 @@ export async function unlockSkillNode(nodeId: number): Promise<SkillTree> {
  */
 export async function deleteSkillTree(treeId: number): Promise<void> {
   return await invoke<void>("delete_skill_tree", { treeId });
+}
+
+// ── CHARACTERS & SESSIONS ──
+
+export async function getCharacters(): Promise<Character[]> {
+  return await invoke<Character[]>("get_characters");
+}
+
+export async function createCharacter(name: string): Promise<Character> {
+  return await invoke<Character>("create_character", { name });
+}
+
+export async function getSessions(characterId: number): Promise<Session[]> {
+  return await invoke<Session[]>("get_sessions", { characterId });
+}
+
+export async function createSession(characterId: number, name: string): Promise<Session> {
+  return await invoke<Session>("create_session", { characterId, name });
+}
+
+export async function setActiveSession(sessionId: number): Promise<Session> {
+  return await invoke<Session>("set_active_session", { sessionId });
+}
+
+export async function getActiveSession(): Promise<Session | null> {
+  return await invoke<Session | null>("get_active_session");
 }
 
 // ── HEALTH CHECK ──

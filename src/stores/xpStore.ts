@@ -15,6 +15,9 @@ import type { XPLog, XPByType } from "../models/XP";
 // Importamos el servicio que habla con el backend Rust/Tauri.
 import * as tauriService from "../services/tauriService";
 
+// Importamos el store de sesiones para saber cuál está activa.
+import { useSessionStore } from "./sessionStore";
+
 // ── CREACIÓN DEL STORE ──
 export const useXpStore = defineStore("xp", () => {
   // ── ESTADO REACTIVO ──
@@ -67,10 +70,12 @@ export const useXpStore = defineStore("xp", () => {
     error.value = null;     // Limpiamos errores previos
     try {
       // Desestructuramos el resultado del array de promesas.
+      const sessionStore = useSessionStore();
+      const sessionId = sessionStore.activeSessionId ?? 1;
       const [logsData, byType, total] = await Promise.all([
-        tauriService.getXpLogs(50),    // Últimos 50 eventos de XP
-        tauriService.getXpByType(),    // Resumen por categoría
-        tauriService.getTotalLoggedXp(), // Número total acumulado
+        tauriService.getXpLogs(sessionId, 50),    // Últimos 50 eventos de XP
+        tauriService.getXpByType(sessionId),    // Resumen por categoría
+        tauriService.getTotalLoggedXp(sessionId), // Número total acumulado
       ]);
       // Guardamos los datos recibidos en el estado reactivo.
       logs.value = logsData;
@@ -92,7 +97,9 @@ export const useXpStore = defineStore("xp", () => {
    */
   async function fetchLogs(limit?: number) {
     try {
-      logs.value = await tauriService.getXpLogs(limit);
+      const sessionStore = useSessionStore();
+      const sessionId = sessionStore.activeSessionId ?? 1;
+      logs.value = await tauriService.getXpLogs(sessionId, limit);
     } catch (e) {
       console.error("Error fetching XP logs:", e);
     }
@@ -105,9 +112,11 @@ export const useXpStore = defineStore("xp", () => {
    */
   async function refresh() {
     try {
+      const sessionStore = useSessionStore();
+      const sessionId = sessionStore.activeSessionId ?? 1;
       const [byType, total] = await Promise.all([
-        tauriService.getXpByType(),
-        tauriService.getTotalLoggedXp(),
+        tauriService.getXpByType(sessionId),
+        tauriService.getTotalLoggedXp(sessionId),
       ]);
       xpByType.value = byType;
       totalLoggedXp.value = total;
