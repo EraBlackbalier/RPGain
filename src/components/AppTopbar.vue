@@ -21,6 +21,7 @@ import { useTaskStore } from "../stores/taskStore";
 import { useSessionStore } from "../stores/sessionStore";
 import PixelIcon from "./PixelIcon.vue";
 import ThemeSwitcher from "./ThemeSwitcher.vue";
+import AutostartToggle from "./AutostartToggle.vue";
 import { playClick, playHover } from "../composables/usePixelSound";
 
 // Instancias del router y ruta actual (para resaltar el botón activo).
@@ -151,6 +152,8 @@ function badgeFor(path: string): string | null {
         </div>
         <span class="xp-mini-text">LVL {{ playerLevel }}</span>
       </div>
+      <!-- AutostartToggle: activa/desactiva inicio con Windows. -->
+      <AutostartToggle />
       <!-- ThemeSwitcher: componente para cambiar entre los 10 temas de color. -->
       <ThemeSwitcher />
     </div>

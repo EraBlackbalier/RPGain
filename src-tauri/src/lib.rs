@@ -4,6 +4,7 @@ use db::Database;
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 use rusqlite::{params, OptionalExtension};
+use tauri_plugin_autostart::MacosLauncher;
 
 // --- Models ---
 
@@ -741,6 +742,7 @@ fn get_active_session(db: State<Database>) -> Result<Option<Session>, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--autostarted"])))
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_dir = app
