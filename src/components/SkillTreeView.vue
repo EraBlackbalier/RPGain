@@ -5,6 +5,11 @@ import PixelIcon from "./PixelIcon.vue";
 
 const props = defineProps<{
   tree: SkillTree;
+  attributes?: any[];
+  sessionId?: number;
+  unlockedNodesCount?: number;
+  bossesDefeatedCount?: number;
+  playerLevel?: number;
 }>();
 
 const emit = defineEmits<{
@@ -30,9 +35,39 @@ function canUnlock(node: SkillNode): boolean {
     const parent = props.tree.nodes.find((n) => n.id === node.parent_id);
     if (parent && !parent.unlocked) return false;
   }
-  // Advanced requirements are validated server-side on unlock attempt
-  // Client-side only shows them as blockers in UI
+  // Validar requisitos avanzados
+  if (node.requirements && node.requirements.length > 0) {
+    const attrs = props.attributes ?? [];
+    const unlockedCount = props.unlockedNodesCount ?? 0;
+    const bossesCount = props.bossesDefeatedCount ?? 0;
+    const level = props.playerLevel ?? 1;
+
+    for (const req of node.requirements) {
+      const isMetForReq = validateAdvancedRequirement(req, attrs, unlockedCount, bossesCount, level);
+      if (!isMetForReq) return false;
+    }
+  }
   return true;
+}
+
+function validateAdvancedRequirement(req: any, attrs: any[], unlockedCount: number, bossesCount: number, level: number): boolean {
+  switch (req.requirement_type) {
+    case "attribute_equipped": {
+      if (req.reference_id === null) return false;
+      return !!attrs.find((a) => a.id === req.reference_id && a.equipped && a.unlocked);
+    }
+    case "nodes_unlocked": {
+      return unlockedCount >= req.target_value;
+    }
+    case "bosses_defeated": {
+      return bossesCount >= req.target_value;
+    }
+    case "level_reached": {
+      return level >= req.target_value;
+    }
+    default:
+      return true;
+  }
 }
 
 function hasRequirements(node: SkillNode): boolean {
@@ -107,7 +142,7 @@ function isParentLocked(node: SkillNode): boolean {
             }"
             @click="canUnlock(node) && emit('unlock', node.id)"
             :disabled="node.unlocked || !canUnlock(node)"
-            :title="node.unlocked ? 'Desbloqueado' : canUnlock(node) ? 'Click para desbloquear' : isParentLocked(node) ? 'Nodo padre bloqueado' : hasRequirements(node) ? 'Requisitos pendientes' : 'XP insuficiente'"
+            :title="`${node.name} - ${node.description || ''}\n${node.unlocked ? '✓ Desbloqueado' : canUnlock(node) ? '🔓 Puedes desbloquear' : isParentLocked(node) ? '🔒 Padre bloqueado' : hasRequirements(node) ? '⚠️ Requisitos pendientes' : '❌ XP insuficiente'}`"
           >
             <PixelIcon class="node-icon" :name="node.icon || 'star'" :size="16" />
             <span class="node-name">{{ node.name }}</span>

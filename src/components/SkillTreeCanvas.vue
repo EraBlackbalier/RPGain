@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import type { SkillTree, SkillNode } from "../models/Skill";
+import type { Attribute } from "../models/Attribute";
 import PixelIcon from "./PixelIcon.vue";
+import { useSkillNodeRequirements } from "../composables/useSkillNodeRequirements";
 
 const props = defineProps<{
   tree: SkillTree;
   color?: string;
   showLabel?: boolean;
+  attributes?: Attribute[];
+  sessionId?: number;
+  unlockedNodesCount?: number;
+  bossesDefeatedCount?: number;
+  playerLevel?: number;
 }>();
 
 /** Color efectivo: usa la prop `color` si se pasa, sino el color persistente del árbol. */
@@ -199,6 +206,87 @@ function pathD(c: { x1: number; y1: number; x2: number; y2: number }): string {
 }
 
 const hoveredNode = ref<number | null>(null);
+const requirementStatusMap = ref<Map<number, any>>(new Map());
+
+/**
+ * Valida si un nodo puede ser desbloqueado:
+ * - No esté ya desbloqueado
+ * - Haya suficiente XP
+ * - El padre esté desbloqueado
+ * - Todos los requisitos adicionales se cumplan
+ */
+function canUnlock(node: SkillNode): boolean {
+  if (node.unlocked) return false;
+  if (node.xp_cost > remainingXp.value) return false;
+  if (node.parent_id !== null) {
+    const parent = props.tree.nodes.find((n) => n.id === node.parent_id);
+    if (parent && !parent.unlocked) return false;
+  }
+
+  // Validar requisitos avanzados si existen
+  if (node.requirements && node.requirements.length > 0) {
+    const attrs = props.attributes ?? [];
+    const unlockedCount = props.unlockedNodesCount ?? 0;
+    const bossesCount = props.bossesDefeatedCount ?? 0;
+    const level = props.playerLevel ?? 1;
+
+    for (const req of node.requirements) {
+      const isMetForReq = validateRequirement(req, attrs, unlockedCount, bossesCount, level);
+      if (!isMetForReq) return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Valida un requisito individual
+ */
+function validateRequirement(req: any, attrs: Attribute[], unlockedCount: number, bossesCount: number, level: number): boolean {
+  switch (req.requirement_type) {
+    case "attribute_equipped": {
+      if (req.reference_id === null) return false;
+      return !!attrs.find((a) => a.id === req.reference_id && a.equipped && a.unlocked);
+    }
+    case "nodes_unlocked": {
+      return unlockedCount >= req.target_value;
+    }
+    case "bosses_defeated": {
+      return bossesCount >= req.target_value;
+    }
+    case "level_reached": {
+      return level >= req.target_value;
+    }
+    default:
+      return true;
+  }
+}
+
+/**
+ * Obtiene una descripción formateada del estado de un requisito
+ */
+function getRequirementStatus(req: any, attrs: Attribute[], unlockedCount: number, bossesCount: number, level: number): string {
+  const isMet = validateRequirement(req, attrs, unlockedCount, bossesCount, level);
+  const met = isMet ? "✓" : "✗";
+
+  switch (req.requirement_type) {
+    case "attribute_equipped": {
+      const attr = attrs.find((a) => a.id === req.reference_id);
+      return `${met} ${attr?.name || "Atributo"} equipado`;
+    }
+    case "nodes_unlocked": {
+      return `${met} ${unlockedCount}/${req.target_value} nodos`;
+    }
+    case "bosses_defeated": {
+      return `${met} ${bossesCount}/${req.target_value} jefes`;
+    }
+    case "level_reached": {
+      return `${met} Nivel ${level} (requerido: ${req.target_value})`;
+    }
+    default:
+      return req.description || req.requirement_type;
+  }
+}
 </script>
 
 <template>
@@ -291,13 +379,20 @@ const hoveredNode = ref<number | null>(null);
           <span v-if="pos.node.description" class="tt-desc">{{ pos.node.description }}</span>
           <span v-if="!pos.node.unlocked" class="tt-cost">{{ pos.node.xp_cost }} XP</span>
           <span v-else class="tt-done">Desbloqueado</span>
-          <!-- Requirements -->
+          <!-- Advanced Requirements -->
           <div v-if="pos.node.requirements && pos.node.requirements.length > 0" class="tt-reqs">
-            <span class="tt-req-label">Requisitos:</span>
-            <span v-for="req in pos.node.requirements" :key="req.id" class="tt-req-item">
-              <PixelIcon :name="req.requirement_type === 'attribute_equipped' ? 'gem' : req.requirement_type === 'bosses_defeated' ? 'skull' : req.requirement_type === 'level_reached' ? 'xp' : 'star'" :size="8" />
-              {{ requirementLabel(req) }}
-            </span>
+            <span class="tt-req-label">📋 Requisitos Avanzados:</span>
+            <div v-for="req in pos.node.requirements" :key="req.id" class="tt-req-item">
+              <span class="req-icon">
+                <PixelIcon 
+                  :name="req.requirement_type === 'attribute_equipped' ? 'gem' : req.requirement_type === 'bosses_defeated' ? 'skull' : req.requirement_type === 'level_reached' ? 'xp' : 'star'" 
+                  :size="10" 
+                />
+              </span>
+              <span class="req-text">
+                {{ getRequirementStatus(req, props.attributes ?? [], props.unlockedNodesCount ?? 0, props.bossesDefeatedCount ?? 0, props.playerLevel ?? 1) }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -455,9 +550,20 @@ const hoveredNode = ref<number | null>(null);
 
 .tt-req-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.3rem;
   font-size: 0.65rem;
   color: #f59e0b;
+}
+
+.req-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}
+
+.req-text {
+  line-height: 1.1;
 }
 </style>

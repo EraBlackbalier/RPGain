@@ -395,6 +395,12 @@ fn update_progress(db: State<Database>, task_id: i64, progress: i64) -> Result<T
 
     let steps_done = new_progress - task.progress;
 
+    // Apply active attribute XP effects
+    let (multiplier, flat_bonus) = get_active_xp_effects(&conn, task.session_id)?;
+    let apply_xp = |base_xp: i64| -> i64 {
+        ((base_xp as f64 * multiplier) as i64 + flat_bonus).max(0)
+    };
+
     if new_progress >= task.progress_total && task.task_kind == "finite" {
         let now = chrono::Local::now().to_rfc3339();
         conn.execute(
@@ -404,7 +410,7 @@ fn update_progress(db: State<Database>, task_id: i64, progress: i64) -> Result<T
         .map_err(|e| e.to_string())?;
         if steps_done > 0 {
             let xp = (task.xp_reward as f64 * steps_done as f64 / task.progress_total as f64).round() as i64;
-            log_xp(&conn, task.session_id, task_id, &task.types, "progress_complete", xp.max(1))?;
+            log_xp(&conn, task.session_id, task_id, &task.types, "progress_complete", apply_xp(xp.max(1)))?;
         }
     } else if steps_done > 0 {
         conn.execute(
@@ -413,7 +419,7 @@ fn update_progress(db: State<Database>, task_id: i64, progress: i64) -> Result<T
         )
         .map_err(|e| e.to_string())?;
         let xp = (task.xp_reward as f64 * steps_done as f64 / task.progress_total as f64).round() as i64;
-        log_xp(&conn, task.session_id, task_id, &task.types, "progress", xp.max(1))?;
+        log_xp(&conn, task.session_id, task_id, &task.types, "progress", apply_xp(xp.max(1)))?;
     } else {
         conn.execute(
             "UPDATE tasks SET progress = ?1 WHERE id = ?2",
@@ -431,20 +437,25 @@ fn complete_task(db: State<Database>, task_id: i64) -> Result<Task, String> {
     let task = fetch_task_by_id(&conn, task_id)?;
     let now = chrono::Local::now().to_rfc3339();
 
+    // Apply active attribute XP effects
+    let (multiplier, flat_bonus) = get_active_xp_effects(&conn, task.session_id)?;
+    let adjusted_xp = ((task.xp_reward as f64 * multiplier) as i64) + flat_bonus;
+    let final_xp = adjusted_xp.max(0);
+
     if task.task_kind == "endless" {
         conn.execute(
             "UPDATE tasks SET iteration_count = iteration_count + 1, progress = 0 WHERE id = ?1",
             params![task_id],
         )
         .map_err(|e| e.to_string())?;
-        log_xp(&conn, task.session_id, task_id, &task.types, "iteration", task.xp_reward)?;
+        log_xp(&conn, task.session_id, task_id, &task.types, "iteration", final_xp)?;
     } else {
         conn.execute(
             "UPDATE tasks SET completed = 1, progress = progress_total, completed_at = ?1 WHERE id = ?2",
             params![now, task_id],
         )
         .map_err(|e| e.to_string())?;
-        log_xp(&conn, task.session_id, task_id, &task.types, "complete", task.xp_reward)?;
+        log_xp(&conn, task.session_id, task_id, &task.types, "complete", final_xp)?;
     }
 
     fetch_task_by_id(&conn, task_id)
@@ -1312,6 +1323,25 @@ fn get_active_effects(db: State<Database>, session_id: i64) -> Result<Vec<Attrib
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
     Ok(attrs)
+}
+
+fn get_active_xp_effects(conn: &rusqlite::Connection, session_id: i64) -> Result<(f64, i64), String> {
+    let sql = format!("{} WHERE session_id = ?1 AND unlocked = 1 AND equipped = 1", ATTR_SELECT);
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let attrs = stmt.query_map(params![session_id], row_to_attribute)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+    let mut multiplier = 1.0;
+    let mut flat_bonus = 0i64;
+    for attr in attrs {
+        match attr.effect_type.as_str() {
+            "xp_multiplier" => multiplier += attr.effect_value,
+            "flat_xp" => flat_bonus += attr.effect_value as i64,
+            _ => {}
+        }
+    }
+    Ok((multiplier, flat_bonus))
 }
 
 // --- Import / Export ---

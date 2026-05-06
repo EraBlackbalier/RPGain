@@ -1,12 +1,22 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, computed } from "vue";
 import { useSkillStore } from "../stores/skillStore";
+import { useAttributeStore } from "../stores/attributeStore";
+import { useSessionStore } from "../stores/sessionStore";
 import SkillTreeCanvas from "../components/SkillTreeCanvas.vue";
 
 const skillStore = useSkillStore();
+const attributeStore = useAttributeStore();
+const sessionStore = useSessionStore();
+
+// Calcular estadísticas dinámicamente
+const unlockedNodesCount = computed(() => skillStore.totalUnlocked);
+const bossesDefeatedCount = computed(() => 0); // Placeholder
+const playerLevel = computed(() => 1); // Placeholder
 
 onMounted(() => {
   skillStore.fetchTrees();
+  attributeStore.fetchAttributes();
 });
 
 async function onUnlock(nodeId: number) {
@@ -31,6 +41,11 @@ async function onUnlock(nodeId: number) {
         v-for="tree in skillStore.trees"
         :key="tree.id"
         :tree="tree"
+        :attributes="attributeStore.attributes"
+        :session-id="sessionStore.activeSessionId ?? 1"
+        :unlocked-nodes-count="unlockedNodesCount"
+        :bosses-defeated-count="bossesDefeatedCount"
+        :player-level="playerLevel"
         @unlock="onUnlock"
       />
     </div>

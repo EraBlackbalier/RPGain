@@ -3,6 +3,7 @@ import { computed } from "vue";
 import type { Task } from "../models/Task";
 import PixelIcon from "./PixelIcon.vue";
 import { playHover, playComplete, playError, playTick } from "../composables/usePixelSound";
+import { useAttributeStore } from "../stores/attributeStore";
 
 const props = defineProps<{
   task: Task;
@@ -40,6 +41,17 @@ const priorityLabel = computed(() => {
 });
 
 const isEndless = computed(() => props.task.task_kind === "endless");
+
+const attrStore = useAttributeStore();
+
+const hasEffects = computed(() => attrStore.xpMultiplier !== 1 || attrStore.flatXpBonus > 0);
+
+const effectiveXp = computed(() => {
+  const base = props.task.xp_reward;
+  const mult = attrStore.xpMultiplier;
+  const flat = attrStore.flatXpBonus;
+  return Math.round(base * mult) + flat;
+});
 
 function onComplete() {
   playComplete();
@@ -95,7 +107,10 @@ function decrementProgress() {
         </div>
 
         <div class="task-right">
-          <span class="task-xp">+{{ task.xp_reward }} XP</span>
+          <span class="task-xp" :class="{ boosted: hasEffects }">
+            +{{ effectiveXp }} XP
+            <span v-if="hasEffects" class="xp-boost-tag" title="Atributos activos">{{ task.xp_reward }}x{{ attrStore.xpMultiplier.toFixed(1) }}{{ attrStore.flatXpBonus > 0 ? '+' + attrStore.flatXpBonus : '' }}</span>
+          </span>
           <div class="task-actions">
             <button
               class="action-btn complete-btn"
@@ -278,6 +293,22 @@ function decrementProgress() {
   background: var(--accent-glow, rgba(168, 85, 247, 0.15));
   padding: 0.2em 0.6em;
   border: 2px solid rgba(168, 85, 247, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.task-xp.boosted {
+  color: #facc15;
+  background: rgba(250, 204, 21, 0.12);
+  border-color: rgba(250, 204, 21, 0.3);
+}
+
+.xp-boost-tag {
+  font-family: "VT323", monospace;
+  font-size: 0.7rem;
+  color: #facc15;
+  opacity: 0.8;
 }
 
 .task-actions {

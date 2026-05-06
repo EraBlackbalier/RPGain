@@ -1,10 +1,27 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { useSkillStore } from "../stores/skillStore";
+import { useAttributeStore } from "../stores/attributeStore";
 import SkillTreeCanvas from "../components/SkillTreeCanvas.vue";
 import PixelIcon from "../components/PixelIcon.vue";
+import { useSessionStore } from "../stores/sessionStore";
 
 const skillStore = useSkillStore();
+const attributeStore = useAttributeStore();
+const sessionStore = useSessionStore();
+
+// Calcular estadísticas dinámicamente para pasar al Canvas
+const unlockedNodesCount = computed(() => skillStore.totalUnlocked);
+const bossesDefeatedCount = computed(() => {
+  // Por ahora retornamos 0, se puede extender con bossStore
+  return 0;
+});
+const playerLevel = computed(() => {
+  // Calcular nivel basado en XP total
+  // Fórmula simple: level = (total_xp / 100) + 1
+  // Se puede refinar según necesidad
+  return 1; // Placeholder, se calcularía desde sessionStore
+});
 
 const ICON_OPTIONS = [
   "sword", "shield", "star", "heart", "flame", "bolt",
@@ -38,6 +55,7 @@ const newNodeParent = ref<number | null>(null);
 
 onMounted(() => {
   skillStore.fetchTrees();
+  attributeStore.fetchAttributes();
 });
 
 async function createTree() {
@@ -133,6 +151,11 @@ async function onUnlock(nodeId: number) {
         :tree="skillStore.selectedTree"
         :color="skillStore.selectedTree.color"
         :show-label="false"
+        :attributes="attributeStore.attributes"
+        :session-id="sessionStore.activeSessionId ?? 1"
+        :unlocked-nodes-count="unlockedNodesCount"
+        :bosses-defeated-count="bossesDefeatedCount"
+        :player-level="playerLevel"
         @unlock="onUnlock"
       />
     </div>

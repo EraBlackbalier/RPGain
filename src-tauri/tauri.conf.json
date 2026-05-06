@@ -42,8 +42,6 @@
     }
   },
   "plugins": {
-    "autostart": {
-      "args": []
-    }
+    "autostart": null
   }
 }
