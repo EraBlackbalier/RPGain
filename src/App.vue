@@ -8,7 +8,7 @@ const showSplash = ref(true);
 const musicStore = useMusicStore();
 
 onMounted(() => {
-  musicStore.ensureAudio();
+  musicStore.startIfEnabled();
 });
 
 function onStart() {

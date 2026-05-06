@@ -143,7 +143,7 @@ async function startGame() {
 <template>
   <div class="splash" :class="{ flash: flashing }">
     <div class="splash-inner" :class="{ shrink: flashing }">
-      <MusicToggle class="splash-music" />
+      <MusicToggle class="splash-music" compact />
 
       <!-- ═══════ PANTALLA: SPLASH INICIAL ═══════ -->
       <template v-if="screen === 'splash'">

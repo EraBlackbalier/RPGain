@@ -44,6 +44,7 @@ const ICONS: Record<string, string> = {
   pencil: `<path d="M3 11L3 13L5 13L12 6L10 4L3 11Z"/><path d="M9 5L11 7" fill="none" stroke="currentColor" stroke-width="1"/>`,
   trash: `<path d="M4 5H12M6 5V3H10V5M5 6V13H11V6" fill="none" stroke="currentColor" stroke-width="2"/>`,
   x: `<path d="M3 3L13 13M13 3L3 13" fill="none" stroke="currentColor" stroke-width="2"/>`,
+  play: `<path d="M4 3L13 8L4 13V3Z"/>`,
   music: `<path d="M6 3V11A3 3 0 1 1 4 8.2V3H13V10A3 3 0 1 1 11 7.2V3H6Z"/>`,
   pause: `<rect x="4" y="3" width="3" height="10"/><rect x="9" y="3" width="3" height="10"/>`,
   chest: `<rect x="2" y="6" width="12" height="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M2 8H14M7 8H9V11H7V8ZM4 6V4H12V6" fill="none" stroke="currentColor" stroke-width="1"/>`,

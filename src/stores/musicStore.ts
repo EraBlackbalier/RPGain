@@ -2,15 +2,14 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
 const SOUNDTRACK_SRC = "/soundtrack.mp3";
-const STORAGE_KEY = "rpgain-music-enabled";
 
 export const useMusicStore = defineStore("music", () => {
   const audio = ref<HTMLAudioElement | null>(null);
-  const enabled = ref(localStorage.getItem(STORAGE_KEY) !== "false");
+  const enabled = ref(true);
   const playing = ref(false);
   const ready = ref(false);
 
-  const icon = computed(() => (playing.value ? "pause" : "music"));
+  const icon = computed(() => (playing.value ? "pause" : "play"));
   const label = computed(() => (playing.value ? "Pausar musica" : "Reproducir musica"));
 
   function ensureAudio() {
@@ -36,7 +35,6 @@ export const useMusicStore = defineStore("music", () => {
 
   async function play() {
     enabled.value = true;
-    localStorage.setItem(STORAGE_KEY, "true");
 
     const player = ensureAudio();
     try {
@@ -49,7 +47,6 @@ export const useMusicStore = defineStore("music", () => {
 
   function pause() {
     enabled.value = false;
-    localStorage.setItem(STORAGE_KEY, "false");
     audio.value?.pause();
     playing.value = false;
   }
