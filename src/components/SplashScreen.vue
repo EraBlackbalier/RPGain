@@ -13,6 +13,7 @@
 import { ref, onMounted } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import PixelIcon from "./PixelIcon.vue";
+import MusicToggle from "./MusicToggle.vue";
 import { playStart, playHover, playClick } from "../composables/usePixelSound";
 import * as tauriService from "../services/tauriService";
 import type { Character } from "../models/Character";
@@ -142,11 +143,12 @@ async function startGame() {
 <template>
   <div class="splash" :class="{ flash: flashing }">
     <div class="splash-inner" :class="{ shrink: flashing }">
+      <MusicToggle class="splash-music" />
 
       <!-- ═══════ PANTALLA: SPLASH INICIAL ═══════ -->
       <template v-if="screen === 'splash'">
         <div class="logo-block" @mouseenter="playHover">
-          <PixelIcon name="shield" :size="32" color="var(--accent)" />
+          <img class="brand-logo" src="/logo_rpgain.png" alt="RPGain" />
         </div>
         <h1 class="game-title">RPGain</h1>
         <p class="subtitle">Quest Manager</p>
@@ -168,7 +170,7 @@ async function startGame() {
       <!-- ═══════ PANTALLA: CREAR PERSONAJE ═══════ -->
       <template v-else-if="screen === 'create-character'">
         <div class="logo-block">
-          <PixelIcon name="user" :size="28" color="var(--info)" />
+          <img class="brand-logo" src="/logo_rpgain.png" alt="RPGain" />
         </div>
         <h2 class="screen-title">Nuevo Heroe</h2>
         <div class="divider"></div>
@@ -193,7 +195,7 @@ async function startGame() {
       <!-- ═══════ PANTALLA: LISTA DE PERSONAJES ═══════ -->
       <template v-else-if="screen === 'characters'">
         <div class="logo-block">
-          <PixelIcon name="users" :size="28" color="var(--warning)" />
+          <img class="brand-logo" src="/logo_rpgain.png" alt="RPGain" />
         </div>
         <h2 class="screen-title">Elije tu Heroe</h2>
         <div class="divider"></div>
@@ -221,7 +223,7 @@ async function startGame() {
       <!-- ═══════ PANTALLA: LISTA DE SESIONES ═══════ -->
       <template v-else-if="screen === 'sessions'">
         <div class="logo-block">
-          <PixelIcon name="scroll" :size="28" color="var(--success)" />
+          <img class="brand-logo" src="/logo_rpgain.png" alt="RPGain" />
         </div>
         <h2 class="screen-title">Sesiones de {{ selectedCharacter?.name }}</h2>
         <div class="divider"></div>
@@ -251,7 +253,7 @@ async function startGame() {
       <!-- ═══════ PANTALLA: CREAR SESION ═══════ -->
       <template v-else-if="screen === 'create-session'">
         <div class="logo-block">
-          <PixelIcon name="scroll" :size="28" color="var(--accent)" />
+          <img class="brand-logo" src="/logo_rpgain.png" alt="RPGain" />
         </div>
         <h2 class="screen-title">Nueva Sesion</h2>
         <p class="hint">{{ selectedCharacter?.name }}</p>
@@ -297,6 +299,7 @@ async function startGame() {
 }
 
 .splash-inner {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -324,6 +327,20 @@ async function startGame() {
   background: var(--accent-glow, rgba(168, 85, 247, 0.15));
   margin-bottom: 0.2rem;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.brand-logo {
+  width: 90%;
+  height: 90%;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+.splash-music {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
 }
 
 .game-title {

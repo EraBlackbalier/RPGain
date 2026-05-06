@@ -23,6 +23,7 @@ import PixelIcon from "./PixelIcon.vue";
 import ThemeSwitcher from "./ThemeSwitcher.vue";
 import AutostartToggle from "./AutostartToggle.vue";
 import ImportExportMenu from "./ImportExportMenu.vue";
+import MusicToggle from "./MusicToggle.vue";
 import { playClick, playHover } from "../composables/usePixelSound";
 
 // Instancias del router y ruta actual (para resaltar el botón activo).
@@ -105,7 +106,7 @@ function badgeFor(path: string): string | null {
     <div class="topbar-left">
       <!-- Bloque del logo: un cuadrado con el icono del escudo y el nivel superpuesto. -->
       <div class="logo-block">
-        <PixelIcon name="shield" :size="22" color="var(--accent)" />
+        <img class="app-logo-img" src="/logo_rpgain.png" alt="RPGain" />
         <!-- `playerLevel`: propiedad computada que muestra el nivel actual del jugador.
              Se actualiza automáticamente cuando cambia la XP total. -->
         <span class="logo-lvl">{{ playerLevel }}</span>
@@ -158,6 +159,7 @@ function badgeFor(path: string): string | null {
       </div>
       <!-- ImportExportMenu: importar/exportar datos de sesión. -->
       <ImportExportMenu />
+      <MusicToggle compact />
       <!-- AutostartToggle: activa/desactiva inicio con Windows. -->
       <AutostartToggle />
       <!-- ThemeSwitcher: componente para cambiar entre los 10 temas de color. -->
@@ -200,6 +202,14 @@ function badgeFor(path: string): string | null {
   justify-content: center;      /* Centra el icono del escudo */
   border: 2px solid var(--accent, #a855f7);
   background: var(--accent-glow, rgba(168, 85, 247, 0.15));
+  overflow: hidden;
+}
+
+.app-logo-img {
+  width: 90%;
+  height: 90%;
+  object-fit: contain;
+  image-rendering: auto;
 }
 
 .logo-lvl {

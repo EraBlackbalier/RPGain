@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import AppTopbar from "./components/AppTopbar.vue";
 import SplashScreen from "./components/SplashScreen.vue";
+import { useMusicStore } from "./stores/musicStore";
 
 const showSplash = ref(true);
+const musicStore = useMusicStore();
+
+onMounted(() => {
+  musicStore.ensureAudio();
+});
 
 function onStart() {
   showSplash.value = false;
+  musicStore.startIfEnabled();
 }
 </script>
 

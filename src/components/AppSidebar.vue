@@ -50,7 +50,7 @@ function badgeFor(path: string): string | null {
   <aside class="sidebar">
     <div class="sidebar-header">
       <div class="logo-shield">
-        <PixelIcon name="shield" :size="28" color="var(--accent)" />
+        <img class="sidebar-logo-img" src="/logo_rpgain.png" alt="RPGain" />
         <span class="logo-level">{{ playerLevel }}</span>
       </div>
       <h1 class="app-title">RPGain</h1>
@@ -122,6 +122,16 @@ function badgeFor(path: string): string | null {
   justify-content: center;
   margin-bottom: 0.3rem;
   position: relative;
+  border: 2px solid var(--accent, #a855f7);
+  background: var(--accent-glow, rgba(168, 85, 247, 0.15));
+  overflow: hidden;
+}
+
+.sidebar-logo-img {
+  width: 90%;
+  height: 90%;
+  object-fit: contain;
+  image-rendering: auto;
 }
 
 .logo-level {
