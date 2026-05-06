@@ -1,7 +1,7 @@
 use rusqlite::{Connection, Result, params};
 use std::sync::Mutex;
 
-const CURRENT_DB_VERSION: i64 = 8;
+const CURRENT_DB_VERSION: i64 = 9;
 
 pub struct Database {
     pub conn: Mutex<Connection>,
@@ -305,6 +305,21 @@ impl Database {
                     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_attributes_session ON attributes(session_id);"
+            )?;
+        }
+
+        if version < 9 {
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS skill_node_requirements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    node_id INTEGER NOT NULL,
+                    requirement_type TEXT NOT NULL DEFAULT 'nodes_unlocked',
+                    target_value INTEGER NOT NULL DEFAULT 1,
+                    reference_id INTEGER,
+                    description TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY (node_id) REFERENCES skill_nodes(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_node_req_node ON skill_node_requirements(node_id);"
             )?;
         }
 

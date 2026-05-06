@@ -136,7 +136,8 @@ export const useSkillStore = defineStore("skills", () => {
 
   /**
    * Desbloquea un nodo gastando XP.
-   * El backend verifica que tengas suficiente XP y que el padre esté desbloqueado.
+   * El backend verifica que tengas suficiente XP, padre desbloqueado,
+   * y requisitos adicionales (atributos, bosses, nivel).
    * Después actualiza el árbol local con los datos del backend.
    */
   async function unlockNode(nodeId: number) {

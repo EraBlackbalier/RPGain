@@ -30,7 +30,33 @@ function canUnlock(node: SkillNode): boolean {
     const parent = props.tree.nodes.find((n) => n.id === node.parent_id);
     if (parent && !parent.unlocked) return false;
   }
+  // Advanced requirements are validated server-side on unlock attempt
+  // Client-side only shows them as blockers in UI
   return true;
+}
+
+function hasRequirements(node: SkillNode): boolean {
+  return !!(node.requirements && node.requirements.length > 0);
+}
+
+function requirementLabel(req: any): string {
+  switch (req.requirement_type) {
+    case "attribute_equipped": return `Equip: ${req.description || req.reference_id}`;
+    case "nodes_unlocked": return `${req.target_value} nodos`;
+    case "bosses_defeated": return `${req.target_value} bosses`;
+    case "level_reached": return `Lvl ${req.target_value}`;
+    default: return req.description || req.requirement_type;
+  }
+}
+
+function requirementIcon(type: string): string {
+  switch (type) {
+    case "attribute_equipped": return "gem";
+    case "nodes_unlocked": return "star";
+    case "bosses_defeated": return "skull";
+    case "level_reached": return "xp";
+    default: return "scroll";
+  }
 }
 
 function isParentLocked(node: SkillNode): boolean {
@@ -77,16 +103,28 @@ function isParentLocked(node: SkillNode): boolean {
               available: canUnlock(node),
               locked: !node.unlocked && !canUnlock(node),
               'parent-locked': isParentLocked(node),
+              'has-reqs': hasRequirements(node),
             }"
             @click="canUnlock(node) && emit('unlock', node.id)"
             :disabled="node.unlocked || !canUnlock(node)"
-            :title="node.unlocked ? 'Desbloqueado' : canUnlock(node) ? 'Click para desbloquear' : isParentLocked(node) ? 'Nodo padre bloqueado' : 'XP insuficiente'"
+            :title="node.unlocked ? 'Desbloqueado' : canUnlock(node) ? 'Click para desbloquear' : isParentLocked(node) ? 'Nodo padre bloqueado' : hasRequirements(node) ? 'Requisitos pendientes' : 'XP insuficiente'"
           >
             <PixelIcon class="node-icon" :name="node.icon || 'star'" :size="16" />
             <span class="node-name">{{ node.name }}</span>
             <span v-if="node.description" class="node-desc">{{ node.description }}</span>
             <span class="node-cost" v-if="!node.unlocked">{{ node.xp_cost }} XP</span>
             <PixelIcon v-else class="node-unlocked-badge" name="check" :size="12" color="#39ff14" />
+            <!-- Requirement badges -->
+            <div v-if="hasRequirements(node) && !node.unlocked" class="node-reqs">
+              <span
+                v-for="req in node.requirements"
+                :key="req.id"
+                class="req-badge"
+                :title="req.description || requirementLabel(req)"
+              >
+                <PixelIcon :name="requirementIcon(req.requirement_type)" :size="8" />
+              </span>
+            </div>
           </button>
         </div>
       </div>
@@ -246,5 +284,24 @@ function isParentLocked(node: SkillNode): boolean {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.node-reqs {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  display: flex;
+  gap: 2px;
+}
+
+.req-badge {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a12;
+  border: 1px solid #312e81;
+  color: #f59e0b;
 }
 </style>

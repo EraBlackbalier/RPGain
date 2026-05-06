@@ -88,6 +88,16 @@ pub struct SkillTree {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SkillNodeRequirement {
+    pub id: i64,
+    pub node_id: i64,
+    pub requirement_type: String,
+    pub target_value: i64,
+    pub reference_id: Option<i64>,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SkillNode {
     pub id: i64,
     pub tree_id: i64,
@@ -99,6 +109,15 @@ pub struct SkillNode {
     pub parent_id: Option<i64>,
     pub unlocked: bool,
     pub unlocked_at: Option<String>,
+    pub requirements: Vec<SkillNodeRequirement>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateNodeRequirementPayload {
+    pub requirement_type: String,
+    pub target_value: i64,
+    pub reference_id: Option<i64>,
+    pub description: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,6 +129,7 @@ pub struct CreateSkillNodePayload {
     pub xp_cost: i64,
     pub tier: i64,
     pub parent_id: Option<i64>,
+    pub requirements: Vec<CreateNodeRequirementPayload>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -559,14 +579,37 @@ fn get_spent_xp_for_tree(conn: &rusqlite::Connection, tree_id: i64) -> Result<i6
     .map_err(|e| e.to_string())
 }
 
+fn fetch_requirements_for_node(conn: &rusqlite::Connection, node_id: i64) -> Result<Vec<SkillNodeRequirement>, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, node_id, requirement_type, target_value, reference_id, description FROM skill_node_requirements WHERE node_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let reqs = stmt
+        .query_map(params![node_id], |row| {
+            Ok(SkillNodeRequirement {
+                id: row.get(0)?,
+                node_id: row.get(1)?,
+                requirement_type: row.get(2)?,
+                target_value: row.get(3)?,
+                reference_id: row.get(4)?,
+                description: row.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(reqs)
+}
+
 fn fetch_nodes_for_tree(conn: &rusqlite::Connection, tree_id: i64) -> Result<Vec<SkillNode>, String> {
     let mut stmt = conn
         .prepare("SELECT id, tree_id, name, description, icon, xp_cost, tier, parent_id, unlocked, unlocked_at FROM skill_nodes WHERE tree_id = ?1 ORDER BY tier ASC, id ASC")
         .map_err(|e| e.to_string())?;
     let nodes = stmt
         .query_map(params![tree_id], |row| {
+            let node_id: i64 = row.get(0)?;
+            let reqs = fetch_requirements_for_node(conn, node_id).unwrap_or_default();
             Ok(SkillNode {
-                id: row.get(0)?,
+                id: node_id,
                 tree_id: row.get(1)?,
                 name: row.get(2)?,
                 description: row.get(3)?,
@@ -576,6 +619,7 @@ fn fetch_nodes_for_tree(conn: &rusqlite::Connection, tree_id: i64) -> Result<Vec
                 parent_id: row.get(7)?,
                 unlocked: row.get::<_, i64>(8)? != 0,
                 unlocked_at: row.get(9)?,
+                requirements: reqs,
             })
         })
         .map_err(|e| e.to_string())?
@@ -644,6 +688,16 @@ fn create_skill_node(db: State<Database>, payload: CreateSkillNodePayload) -> Re
     )
     .map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
+
+    // Insert requirements
+    for req in &payload.requirements {
+        conn.execute(
+            "INSERT INTO skill_node_requirements (node_id, requirement_type, target_value, reference_id, description) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, req.requirement_type, req.target_value, req.reference_id, req.description],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    let reqs = fetch_requirements_for_node(&conn, id)?;
     Ok(SkillNode {
         id,
         tree_id: payload.tree_id,
@@ -655,31 +709,92 @@ fn create_skill_node(db: State<Database>, payload: CreateSkillNodePayload) -> Re
         parent_id: payload.parent_id,
         unlocked: false,
         unlocked_at: None,
+        requirements: reqs,
     })
+}
+
+fn validate_node_requirements(conn: &rusqlite::Connection, session_id: i64, node_id: i64) -> Result<(), String> {
+    let reqs = fetch_requirements_for_node(conn, node_id)?;
+    for req in reqs {
+        let met = match req.requirement_type.as_str() {
+            "attribute_equipped" => {
+                if let Some(ref_id) = req.reference_id {
+                    let count: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM attributes WHERE id = ?1 AND session_id = ?2 AND unlocked = 1 AND equipped = 1",
+                        params![ref_id, session_id], |row| row.get(0)
+                    ).unwrap_or(0);
+                    count >= req.target_value
+                } else {
+                    false
+                }
+            }
+            "nodes_unlocked" => {
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM skill_nodes WHERE unlocked = 1 AND tree_id IN (SELECT id FROM skill_trees WHERE session_id = ?1)",
+                    params![session_id], |row| row.get(0)
+                ).unwrap_or(0);
+                count >= req.target_value
+            }
+            "bosses_defeated" => {
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM bosses WHERE session_id = ?1 AND status = 'defeated'",
+                    params![session_id], |row| row.get(0)
+                ).unwrap_or(0);
+                count >= req.target_value
+            }
+            "level_reached" => {
+                let total_xp: i64 = conn.query_row(
+                    "SELECT COALESCE(SUM(xp_amount), 0) FROM xp_logs WHERE session_id = ?1",
+                    params![session_id], |row| row.get(0)
+                ).unwrap_or(0);
+                let level = total_xp / 100 + 1;
+                level >= req.target_value
+            }
+            _ => true,
+        };
+        if !met {
+            return Err(format!("Requirement not met: {}", req.description));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn check_skill_node_requirements(db: State<Database>, node_id: i64, session_id: i64) -> Result<bool, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    match validate_node_requirements(&conn, session_id, node_id) {
+        Ok(_) => Ok(true),
+        Err(_e) => Ok(false),
+    }
 }
 
 #[tauri::command]
 fn unlock_skill_node(db: State<Database>, node_id: i64) -> Result<SkillTree, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
-    let node: SkillNode = conn
+    let node_id_val = node_id;
+    let (nid, tree_id, name, description, icon, xp_cost, tier, parent_id, unlocked, unlocked_at): (i64, i64, String, String, String, i64, i64, Option<i64>, i64, Option<String>) = conn
         .query_row(
             "SELECT id, tree_id, name, description, icon, xp_cost, tier, parent_id, unlocked, unlocked_at FROM skill_nodes WHERE id = ?1",
-            params![node_id],
-            |row| Ok(SkillNode {
-                id: row.get(0)?,
-                tree_id: row.get(1)?,
-                name: row.get(2)?,
-                description: row.get(3)?,
-                icon: row.get(4)?,
-                xp_cost: row.get(5)?,
-                tier: row.get(6)?,
-                parent_id: row.get(7)?,
-                unlocked: row.get::<_, i64>(8)? != 0,
-                unlocked_at: row.get(9)?,
-            }),
+            params![node_id_val],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?)),
         )
         .map_err(|e| format!("Node not found: {}", e))?;
+
+    let reqs = fetch_requirements_for_node(&conn, nid).unwrap_or_default();
+    let node = SkillNode {
+        id: nid,
+        tree_id,
+        name,
+        description,
+        icon,
+        xp_cost,
+        tier,
+        parent_id,
+        unlocked: unlocked != 0,
+        unlocked_at,
+        requirements: reqs,
+    };
 
     if node.unlocked {
         return Err("Node already unlocked".to_string());
@@ -707,6 +822,12 @@ fn unlock_skill_node(db: State<Database>, node_id: i64) -> Result<SkillTree, Str
     if remaining < node.xp_cost {
         return Err(format!("Not enough XP: need {} but only {} available", node.xp_cost, remaining));
     }
+
+    // Validate advanced requirements
+    let tree_session_id: i64 = conn
+        .query_row("SELECT session_id FROM skill_trees WHERE id = ?1", params![node.tree_id], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    validate_node_requirements(&conn, tree_session_id, node_id)?;
 
     let now = chrono::Local::now().to_rfc3339();
     conn.execute(
@@ -1397,6 +1518,7 @@ pub fn run() {
             create_skill_tree,
             create_skill_node,
             unlock_skill_node,
+            check_skill_node_requirements,
             delete_skill_tree,
             get_characters,
             create_character,

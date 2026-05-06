@@ -174,6 +174,17 @@ export async function unlockSkillNode(nodeId: number): Promise<SkillTree> {
 }
 
 /**
+ * Verifica si un nodo cumple todos sus requisitos adicionales
+ * (atributos equipados, bosses derrotados, nivel alcanzado, etc).
+ * `nodeId`: ID del nodo a verificar.
+ * `sessionId`: ID de la sesión activa.
+ * Llama al comando Rust `check_skill_node_requirements`.
+ */
+export async function checkSkillNodeRequirements(nodeId: number, sessionId: number): Promise<boolean> {
+  return await invoke<boolean>("check_skill_node_requirements", { nodeId, sessionId });
+}
+
+/**
  * Elimina un árbol de habilidades completo (y todos sus nodos).
  * `treeId`: ID del árbol a borrar.
  * Llama al comando Rust `delete_skill_tree`.

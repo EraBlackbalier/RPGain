@@ -26,7 +26,18 @@ export interface SkillTree {
 // ── SKILL NODE (Nodo) ──
 // Representa UNA habilidad dentro del árbol.
 // Puede estar bloqueada o desbloqueada.
-// Para desbloquear necesitas: XP suficiente + padre desbloqueado.
+// Para desbloquear necesitas: XP suficiente + padre desbloqueado + requisitos.
+
+export type NodeRequirementType = "attribute_equipped" | "nodes_unlocked" | "bosses_defeated" | "level_reached";
+
+export interface SkillNodeRequirement {
+  id: number;
+  node_id: number;
+  requirement_type: NodeRequirementType;
+  target_value: number;        // valor numérico requerido (nivel, count, etc.)
+  reference_id: number | null;   // para attribute_equipped: el attribute_id
+  description: string;
+}
 
 export interface SkillNode {
   id: number;                  // ID único del nodo
@@ -39,11 +50,19 @@ export interface SkillNode {
   parent_id: number | null;    // ID del nodo padre, o null si es raíz
   unlocked: boolean;           // true = ya lo compraste/desbloqueaste
   unlocked_at: string | null;  // Fecha de desbloqueo, o null si sigue bloqueado
+  requirements: SkillNodeRequirement[];  // Requisitos adicionales de desbloqueo
 }
 
 // ── CREATE SKILL NODE PAYLOAD ──
 // Datos que enviamos al backend (Rust) cuando creamos un nodo nuevo.
 // Las propiedades con "?" son opcionales.
+
+export interface CreateNodeRequirementPayload {
+  requirement_type: NodeRequirementType;
+  target_value: number;
+  reference_id?: number | null;
+  description?: string;
+}
 
 export interface CreateSkillNodePayload {
   tree_id: number;             // ID del árbol donde va el nodo
@@ -53,4 +72,5 @@ export interface CreateSkillNodePayload {
   xp_cost: number;             // Costo en XP (obligatorio)
   tier: number;                // Nivel/tier del nodo (obligatorio)
   parent_id?: number | null;   // Padre (opcional; null = raíz)
+  requirements?: CreateNodeRequirementPayload[];
 }

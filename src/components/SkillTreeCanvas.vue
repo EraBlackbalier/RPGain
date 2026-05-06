@@ -183,6 +183,16 @@ function canUnlock(node: SkillNode): boolean {
   return true;
 }
 
+function requirementLabel(req: any): string {
+  switch (req.requirement_type) {
+    case "attribute_equipped": return `Equip: ${req.description || req.reference_id}`;
+    case "nodes_unlocked": return `${req.target_value} nodos`;
+    case "bosses_defeated": return `${req.target_value} bosses`;
+    case "level_reached": return `Lvl ${req.target_value}`;
+    default: return req.description || req.requirement_type;
+  }
+}
+
 function pathD(c: { x1: number; y1: number; x2: number; y2: number }): string {
   const midY = (c.y1 + c.y2) / 2;
   return `M ${c.x1} ${c.y1} C ${c.x1} ${midY}, ${c.x2} ${midY}, ${c.x2} ${c.y2}`;
@@ -281,6 +291,14 @@ const hoveredNode = ref<number | null>(null);
           <span v-if="pos.node.description" class="tt-desc">{{ pos.node.description }}</span>
           <span v-if="!pos.node.unlocked" class="tt-cost">{{ pos.node.xp_cost }} XP</span>
           <span v-else class="tt-done">Desbloqueado</span>
+          <!-- Requirements -->
+          <div v-if="pos.node.requirements && pos.node.requirements.length > 0" class="tt-reqs">
+            <span class="tt-req-label">Requisitos:</span>
+            <span v-for="req in pos.node.requirements" :key="req.id" class="tt-req-item">
+              <PixelIcon :name="req.requirement_type === 'attribute_equipped' ? 'gem' : req.requirement_type === 'bosses_defeated' ? 'skull' : req.requirement_type === 'level_reached' ? 'xp' : 'star'" :size="8" />
+              {{ requirementLabel(req) }}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -417,5 +435,29 @@ const hoveredNode = ref<number | null>(null);
   font-size: 0.7rem;
   color: #4ade80;
   font-weight: 600;
+}
+
+.tt-reqs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-top: 1px solid #312e81;
+  padding-top: 0.3rem;
+  margin-top: 0.2rem;
+}
+
+.tt-req-label {
+  font-family: "Press Start 2P", cursive;
+  font-size: 0.3rem;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.tt-req-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.65rem;
+  color: #f59e0b;
 }
 </style>
