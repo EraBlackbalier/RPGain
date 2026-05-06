@@ -180,31 +180,6 @@ const connections = computed(() => {
   return lines;
 });
 
-function canUnlock(node: SkillNode): boolean {
-  if (node.unlocked) return false;
-  if (node.xp_cost > remainingXp.value) return false;
-  if (node.parent_id !== null) {
-    const parent = props.tree.nodes.find((n) => n.id === node.parent_id);
-    if (parent && !parent.unlocked) return false;
-  }
-  return true;
-}
-
-function requirementLabel(req: any): string {
-  switch (req.requirement_type) {
-    case "attribute_equipped": return `Equip: ${req.description || req.reference_id}`;
-    case "nodes_unlocked": return `${req.target_value} nodos`;
-    case "bosses_defeated": return `${req.target_value} bosses`;
-    case "level_reached": return `Lvl ${req.target_value}`;
-    default: return req.description || req.requirement_type;
-  }
-}
-
-function pathD(c: { x1: number; y1: number; x2: number; y2: number }): string {
-  const midY = (c.y1 + c.y2) / 2;
-  return `M ${c.x1} ${c.y1} C ${c.x1} ${midY}, ${c.x2} ${midY}, ${c.x2} ${c.y2}`;
-}
-
 const hoveredNode = ref<number | null>(null);
 const requirementStatusMap = ref<Map<number, any>>(new Map());
 
@@ -286,6 +261,11 @@ function getRequirementStatus(req: any, attrs: Attribute[], unlockedCount: numbe
     default:
       return req.description || req.requirement_type;
   }
+}
+
+function pathD(c: { x1: number; y1: number; x2: number; y2: number }): string {
+  const midY = (c.y1 + c.y2) / 2;
+  return `M ${c.x1} ${c.y1} C ${c.x1} ${midY}, ${c.x2} ${midY}, ${c.x2} ${c.y2}`;
 }
 </script>
 
