@@ -51,6 +51,7 @@ const navItems = [
   { path: "/skill-trees", label: "Skill Trees", icon: "tree" },
   { path: "/bosses", label: "Bosses", icon: "skull" },
   { path: "/inventory", label: "Inventario", icon: "chest" },
+  { path: "/notes", label: "Notas", icon: "book" },
 ];
 
 /** Navega a una ruta y reproduce el sonido de click retro. */
@@ -186,7 +187,8 @@ function badgeFor(path: string): string | null {
   display: flex;
   align-items: center;
   gap: 0.5rem;                /* Espacio entre logo y título */
-  flex-shrink: 0;             /* No se encoje (mantiene tamaño fijo) */
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .logo-block {
@@ -228,7 +230,16 @@ function badgeFor(path: string): string | null {
   align-items: center;
   gap: 0.15rem;                /* Mínimo espacio entre botones de navegación */
   flex: 1;                     /* Ocupa TODO el espacio sobrante entre izquierda y derecha */
-  justify-content: center;      /* Centra los botones en ese espacio */
+  justify-content: flex-start;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 0.2rem 0.2rem;
+  scrollbar-width: none;
+}
+
+.topbar-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-item {
@@ -236,11 +247,12 @@ function badgeFor(path: string): string | null {
   display: flex;
   align-items: center;
   gap: 0.4rem;                 /* Espacio entre icono, texto y badge */
-  padding: 0.4rem 0.7rem;      /* Área clicable amplia */
+  padding: 0.36rem 0.58rem;    /* Área clicable compacta */
   border: none;
   background: transparent;     /* Fondo transparente por defecto */
   color: var(--text-muted, #94a3b8); /* Color apagado cuando NO está activo */
   font-size: 0.9rem;
+  flex: 0 0 auto;
   cursor: pointer;
   transition: all 0.08s;     /* Transición rápida (0.08s = 80ms) para respuesta inmediata */
   text-align: left;
@@ -283,7 +295,7 @@ function badgeFor(path: string): string | null {
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: 0.6rem;                 /* Espacio entre barra de XP y ThemeSwitcher */
+  gap: 0.45rem;                /* Espacio entre barra de XP y ThemeSwitcher */
   flex-shrink: 0;             /* No se encoje */
 }
 
@@ -331,5 +343,34 @@ function badgeFor(path: string): string | null {
   white-space: nowrap;
   font-family: "Press Start 2P", cursive;
   font-size: 0.35rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+@media (max-width: 980px) {
+  .session-badge,
+  .xp-bar-mini {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    padding: 0 0.6rem;
+    gap: 0.45rem;
+  }
+
+  .app-title {
+    display: none;
+  }
+
+  .nav-item {
+    padding: 0.34rem 0.5rem;
+  }
+
+  .nav-label {
+    font-size: 0.82rem;
+  }
 }
 </style>

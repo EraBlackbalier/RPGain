@@ -244,6 +244,36 @@ pub struct CreateAttributePayload {
     pub rarity: i64,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Note {
+    pub id: i64,
+    pub session_id: i64,
+    pub title: String,
+    pub description: String,
+    pub content: String,
+    pub color: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateNotePayload {
+    pub session_id: i64,
+    pub title: String,
+    pub description: Option<String>,
+    pub content: Option<String>,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateNotePayload {
+    pub id: i64,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub content: Option<String>,
+    pub color: Option<String>,
+}
+
 // --- Helpers ---
 
 fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
@@ -1344,6 +1374,105 @@ fn get_active_xp_effects(conn: &rusqlite::Connection, session_id: i64) -> Result
     Ok((multiplier, flat_bonus))
 }
 
+// --- Note Commands ---
+
+const NOTE_SELECT: &str =
+    "SELECT id, session_id, title, description, content, color, created_at, updated_at FROM notes";
+
+fn row_to_note(row: &rusqlite::Row) -> rusqlite::Result<Note> {
+    Ok(Note {
+        id: row.get(0)?,
+        session_id: row.get(1)?,
+        title: row.get(2)?,
+        description: row.get(3)?,
+        content: row.get(4)?,
+        color: row.get(5)?,
+        created_at: row.get(6)?,
+        updated_at: row.get(7)?,
+    })
+}
+
+#[tauri::command]
+fn get_notes(db: State<Database>, session_id: i64) -> Result<Vec<Note>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE session_id = ?1 ORDER BY updated_at DESC", NOTE_SELECT);
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let notes = stmt
+        .query_map(params![session_id], row_to_note)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(notes)
+}
+
+#[tauri::command]
+fn create_note(db: State<Database>, payload: CreateNotePayload) -> Result<Note, String> {
+    let title = payload.title.trim();
+    if title.is_empty() {
+        return Err("El titulo de la nota es obligatorio".to_string());
+    }
+
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Local::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO notes (session_id, title, description, content, color, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            payload.session_id,
+            title,
+            payload.description.unwrap_or_default(),
+            payload.content.unwrap_or_default(),
+            payload.color.unwrap_or_else(|| "#a855f7".to_string()),
+            now,
+            now
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let id = conn.last_insert_rowid();
+    let sql = format!("{} WHERE id = ?1", NOTE_SELECT);
+    conn.query_row(&sql, params![id], row_to_note)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_note(db: State<Database>, payload: UpdateNotePayload) -> Result<Note, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE id = ?1", NOTE_SELECT);
+    let current = conn
+        .query_row(&sql, params![payload.id], row_to_note)
+        .map_err(|e| format!("Note not found: {}", e))?;
+
+    let title = payload.title.unwrap_or(current.title).trim().to_string();
+    if title.is_empty() {
+        return Err("El titulo de la nota es obligatorio".to_string());
+    }
+
+    let now = chrono::Local::now().to_rfc3339();
+    conn.execute(
+        "UPDATE notes SET title = ?1, description = ?2, content = ?3, color = ?4, updated_at = ?5 WHERE id = ?6",
+        params![
+            title,
+            payload.description.unwrap_or(current.description),
+            payload.content.unwrap_or(current.content),
+            payload.color.unwrap_or(current.color),
+            now,
+            payload.id
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.query_row(&sql, params![payload.id], row_to_note)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_note(db: State<Database>, note_id: i64) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM notes WHERE id = ?1", params![note_id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // --- Import / Export ---
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1353,6 +1482,8 @@ pub struct ExportData {
     pub tasks: Vec<Task>,
     pub skill_trees: Vec<ExportSkillTree>,
     pub xp_logs: Vec<XPLog>,
+    #[serde(default)]
+    pub notes: Vec<Note>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1436,12 +1567,22 @@ fn export_session_data(db: State<Database>, session_id: i64) -> Result<String, S
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
+    // Notes
+    let sql = format!("{} WHERE session_id = ?1 ORDER BY id ASC", NOTE_SELECT);
+    let mut note_stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let notes: Vec<Note> = note_stmt
+        .query_map(params![session_id], row_to_note)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
     let export = ExportData {
         rpgain_version: "0.1.0".to_string(),
         exported_at: chrono::Local::now().to_rfc3339(),
         tasks,
         skill_trees: export_trees,
         xp_logs,
+        notes,
     };
 
     serde_json::to_string_pretty(&export).map_err(|e| e.to_string())
@@ -1458,6 +1599,7 @@ fn import_session_data(db: State<Database>, session_id: i64, json_data: String) 
     let mut tasks_imported = 0i64;
     let mut trees_imported = 0i64;
     let mut logs_imported = 0i64;
+    let mut notes_imported = 0i64;
 
     // Import tasks
     for t in &data.tasks {
@@ -1513,7 +1655,16 @@ fn import_session_data(db: State<Database>, session_id: i64, json_data: String) 
         logs_imported += 1;
     }
 
-    Ok(format!("Imported: {} tasks, {} skill trees, {} XP logs", tasks_imported, trees_imported, logs_imported))
+    // Import notes
+    for note in &data.notes {
+        conn.execute(
+            "INSERT INTO notes (session_id, title, description, content, color, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![session_id, note.title, note.description, note.content, note.color, now, now],
+        ).map_err(|e| e.to_string())?;
+        notes_imported += 1;
+    }
+
+    Ok(format!("Imported: {} tasks, {} skill trees, {} XP logs, {} notes", tasks_imported, trees_imported, logs_imported, notes_imported))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1568,6 +1719,10 @@ pub fn run() {
             unlock_attribute,
             toggle_equip_attribute,
             get_active_effects,
+            get_notes,
+            create_note,
+            update_note,
+            delete_note,
             export_session_data,
             import_session_data,
         ])

@@ -20,6 +20,7 @@ import type { Character } from "../models/Character";
 import type { Session } from "../models/Session";
 import type { Boss, CreateBossPayload } from "../models/Boss";
 import type { Attribute, CreateAttributePayload } from "../models/Attribute";
+import type { Note, CreateNotePayload, UpdateNotePayload } from "../models/Note";
 
 // ── TAREAS (Tasks) ──
 
@@ -279,6 +280,36 @@ export async function exportSessionData(sessionId: number): Promise<string> {
 
 export async function importSessionData(sessionId: number, jsonData: string): Promise<string> {
   return await invoke<string>("import_session_data", { sessionId, jsonData });
+}
+
+// ── NOTAS (Notes - Bloc de Notas) ──
+
+/**
+ * Obtiene todas las notas de la sesión activa.
+ */
+export async function getNotes(sessionId: number): Promise<Note[]> {
+  return await invoke<Note[]>("get_notes", { sessionId });
+}
+
+/**
+ * Crea una nueva nota.
+ */
+export async function createNote(payload: CreateNotePayload): Promise<Note> {
+  return await invoke<Note>("create_note", { payload });
+}
+
+/**
+ * Actualiza una nota existente.
+ */
+export async function updateNote(payload: UpdateNotePayload): Promise<Note> {
+  return await invoke<Note>("update_note", { payload });
+}
+
+/**
+ * Elimina una nota.
+ */
+export async function deleteNote(noteId: number): Promise<void> {
+  return await invoke<void>("delete_note", { noteId });
 }
 
 // ── HEALTH CHECK ──

@@ -16,6 +16,7 @@ const navItems = [
   { path: "/analytics", label: "Analytics", icon: "chart" },
   { path: "/skills", label: "Skills", icon: "star" },
   { path: "/skill-trees", label: "Skill Trees", icon: "tree" },
+  { path: "/notes", label: "Notas", icon: "book" },
 ];
 
 function navigate(path: string) {

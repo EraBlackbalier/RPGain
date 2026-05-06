@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import type { SkillTree, SkillNode } from "../models/Skill";
 import type { Attribute } from "../models/Attribute";
 import PixelIcon from "./PixelIcon.vue";
-import { useSkillNodeRequirements } from "../composables/useSkillNodeRequirements";
 
 const props = defineProps<{
   tree: SkillTree;
@@ -181,7 +180,6 @@ const connections = computed(() => {
 });
 
 const hoveredNode = ref<number | null>(null);
-const requirementStatusMap = ref<Map<number, any>>(new Map());
 
 /**
  * Valida si un nodo puede ser desbloqueado:
