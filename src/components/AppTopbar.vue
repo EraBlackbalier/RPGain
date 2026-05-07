@@ -53,6 +53,7 @@ const navItems = [
   { path: "/bosses", label: "Bosses", icon: "skull" },
   { path: "/inventory", label: "Inventario", icon: "chest" },
   { path: "/notes", label: "Notas", icon: "book" },
+  { path: "/community-packages", label: "Paquetes", icon: "bag" },
 ];
 
 /** Navega a una ruta y reproduce el sonido de click retro. */

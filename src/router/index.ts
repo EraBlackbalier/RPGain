@@ -19,6 +19,7 @@ import SkillTreesView from "../views/SkillTreesView.vue";
 import BossesView from "../views/BossesView.vue";
 import InventoryView from "../views/InventoryView.vue";
 import NotesView from "../views/NotesView.vue";
+import CommunityPackagesView from "../views/CommunityPackagesView.vue";
 
 // ── DEFINICIÓN DE RUTAS ──
 // Cada objeto en este array es una ruta.
@@ -61,6 +62,11 @@ const routes = [
     path: "/notes",
     name: "Notes",
     component: NotesView,
+  },
+  {
+    path: "/community-packages",
+    name: "CommunityPackages",
+    component: CommunityPackagesView,
   },
 ];
 
